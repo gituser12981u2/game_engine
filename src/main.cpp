@@ -51,6 +51,29 @@ int main() {
     return 1;
   }
 
+  // Get size (in pixels) for swapchain extent
+  // TODO: Make this a helper function in vulkan_swapchain
+  int fbWidth = 0;
+  int fbHeight = 0;
+  glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+  if (fbWidth == 0 || fbHeight == 0) {
+    int winWidth = 0;
+    int winHeight = 0;
+    glfwGetWindowSize(window, &winWidth, &winHeight);
+    fbWidth = winWidth;
+    fbHeight = winHeight;
+  }
+
+  // Create swapchain
+  if (!ctx.createSwapchain(surface, static_cast<uint32_t>(fbWidth),
+                           static_cast<uint32_t>(fbHeight))) {
+    std::cerr << "Failed to create swapchain\n";
+    vkDestroySurfaceKHR(ctx.instance(), surface, nullptr);
+    ctx.shutdown();
+    glfwTerminate();
+    return 1;
+  }
+
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     // Rendering
@@ -58,11 +81,10 @@ int main() {
 
   vkDeviceWaitIdle(ctx.device());
 
+  ctx.destroySwapchain();
   vkDestroySurfaceKHR(ctx.instance(), surface, nullptr);
   glfwDestroyWindow(window);
   glfwTerminate();
-
-  // TODO: swapchain
 
   ctx.shutdown();
   return 0;

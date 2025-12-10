@@ -6,6 +6,7 @@
 #include <set>
 #include <vector>
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 namespace {
 
