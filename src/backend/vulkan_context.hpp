@@ -41,6 +41,17 @@ public:
     return m_swapchainFramebuffers;
   }
 
+  bool createCommandPool();
+  void destroyCommandPool();
+
+  bool allocateCommandBuffers(uint32_t count);
+  void freeCommandBuffers();
+
+  VkCommandPool commandPool() const { return m_commandPool; }
+  const std::vector<VkCommandBuffer> &commandBuffers() const {
+    return m_commandBuffers;
+  }
+
 private:
   bool checkValidationLayerSupport();
   bool createInstance(const std::vector<const char *> &platformExtensions);
@@ -71,6 +82,9 @@ private:
   VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;
 
   std::vector<VkFramebuffer> m_swapchainFramebuffers;
+
+  VkCommandPool m_commandPool = VK_NULL_HANDLE;
+  std::vector<VkCommandBuffer> m_commandBuffers;
 
   bool m_enableValidationLayers = true; // Gated by NDEBUG in cpp
 };

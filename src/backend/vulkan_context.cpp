@@ -162,6 +162,7 @@ void VulkanContext::shutdown() {
       m_renderPass = VK_NULL_HANDLE;
     }
 
+    // destroyCommandPool();
     vkDestroyDevice(m_device, nullptr);
     m_device = VK_NULL_HANDLE;
   }
@@ -686,4 +687,99 @@ void VulkanContext::destroyFramebuffers() {
     }
   }
   m_swapchainFramebuffers.clear();
+}
+
+bool VulkanContext::createCommandPool() {
+  if (m_device == VK_NULL_HANDLE) {
+    std::cerr << "[Cmd] Device is null\n";
+    return false;
+  }
+
+  if (m_graphicsQueueFamilyIndex == UINT32_MAX) {
+    std::cerr << "[Cmd] Graphics queue family index invalid\n";
+    return false;
+  }
+
+  if (m_commandPool != VK_NULL_HANDLE) {
+    return true;
+  }
+
+  VkCommandPoolCreateInfo poolInfo{};
+  poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  poolInfo.queueFamilyIndex = m_graphicsQueueFamilyIndex;
+  poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // per-frame
+
+  VkResult res =
+      vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool);
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Cmd] vkCreateCommandPool failed: " << res << "\n";
+    m_commandPool = VK_NULL_HANDLE;
+    return false;
+  }
+
+  std::cout << "[Cmd] Command pool created\n";
+  return true;
+}
+
+void VulkanContext::destroyCommandPool() {
+  if (m_device == VK_NULL_HANDLE) {
+    m_commandBuffers.clear();
+    m_commandPool = VK_NULL_HANDLE;
+    return;
+  }
+
+  if (!m_commandBuffers.empty()) {
+    vkFreeCommandBuffers(m_device, m_commandPool,
+                         static_cast<uint32_t>(m_commandBuffers.size()),
+                         m_commandBuffers.data());
+    m_commandBuffers.clear();
+  }
+
+  if (m_commandPool != VK_NULL_HANDLE) {
+    vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+    m_commandPool = VK_NULL_HANDLE;
+  }
+}
+
+bool VulkanContext::allocateCommandBuffers(uint32_t count) {
+  if (m_device == VK_NULL_HANDLE || m_commandPool == VK_NULL_HANDLE) {
+    std::cerr << "[Cmd] Device or command pool not read\n";
+    return false;
+  }
+
+  freeCommandBuffers();
+
+  m_commandBuffers.resize(count, VK_NULL_HANDLE);
+
+  VkCommandBufferAllocateInfo allocInfo{};
+  allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  allocInfo.commandPool = m_commandPool;
+  allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocInfo.commandBufferCount = count;
+
+  VkResult res =
+      vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data());
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Cmd] vkAllocateCommandBuffers failed: " << res << "\n";
+    m_commandBuffers.clear();
+    return false;
+  }
+
+  std::cout << "[Cmd] Allocated " << m_commandBuffers.size()
+            << " command buffers\n";
+  return true;
+}
+
+void VulkanContext::freeCommandBuffers() {
+  if (m_device == VK_NULL_HANDLE || m_commandPool == VK_NULL_HANDLE) {
+    m_commandBuffers.clear();
+    return;
+  }
+
+  if (!m_commandBuffers.empty()) {
+    vkFreeCommandBuffers(m_device, m_commandPool,
+                         static_cast<uint32_t>(m_commandBuffers.size()),
+                         m_commandBuffers.data());
+    m_commandBuffers.clear();
+  }
 }

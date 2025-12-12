@@ -1,6 +1,7 @@
 #include "backend/vulkan_context.hpp"
 #include "vulkan_presenter.hpp"
 #include <GLFW/glfw3.h>
+#include <cstdint>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
@@ -11,6 +12,7 @@ int main() {
   VulkanContext ctx;
 
   auto cleanup = [&]() {
+    ctx.destroyCommandPool();
     ctx.destroyFramebuffers();
     presenter.shutdown(ctx);
     ctx.shutdown();
@@ -90,6 +92,20 @@ int main() {
   // Create frame buffers
   if (!ctx.createFrameBuffers(presenter.imageViews(), presenter.extent())) {
     std::cerr << "Failed to create framebuffers\n";
+    cleanup();
+    return 1;
+  }
+
+  if (!ctx.createCommandPool()) {
+    std::cerr << "Failed to create the command pool\n";
+    cleanup();
+    return 1;
+  }
+
+  if (!ctx.allocateCommandBuffers(
+          static_cast<uint32_t>(ctx.framebuffers().size()))) {
+    std::cerr << "Failed to allocate " << ctx.framebuffers().size()
+              << " frame buffers";
     cleanup();
     return 1;
   }
