@@ -1,22 +1,16 @@
-add_library(backend STATIC 
-    vulkan_context.cpp
-    vulkan_context.hpp
-    vulkan_swapchain.cpp
-    vulkan_swapchain.hpp
-    vulkan_presenter.cpp
-    vulkan_presenter.hpp
-    vulkan_shader.cpp
-    vulkan_shader.hpp
+add_subdirectory(core)
+add_subdirectory(frame)
+add_subdirectory(presentation)
+add_subdirectory(render)
+add_subdirectory(shaders)
+
+add_library(engine_backend INTERFACE)
+target_link_libraries(engine_backend INTERFACE
+  engine::core
+  engine::presentation
+  engine::frame
+  engine::render
+  engine::shader
 )
 
-target_include_directories(backend
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-target_link_libraries(backend
-    PUBLIC
-        Vulkan::Vulkan
-    PRIVATE
-        glfw
-)
+add_library(engine::backend ALIAS engine_backend)

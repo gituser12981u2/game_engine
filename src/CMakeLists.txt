@@ -1,8 +1,10 @@
-add_executable(main main.cpp)
 add_subdirectory(backend)
 
-target_link_libraries(main 
+add_executable(engine_app main.cpp)
+
+target_link_libraries(engine_app
   PRIVATE 
-      glfw
-      backend
+    glfw
+    engine::backend
 )
+

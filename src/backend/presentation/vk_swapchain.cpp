@@ -1,4 +1,4 @@
-#include "vulkan_swapchain.hpp"
+#include "vk_swapchain.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -6,9 +6,9 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-VulkanSwapchain::SwapChainSupportDetails
-VulkanSwapchain::querySwapChainSupport(VkPhysicalDevice device,
-                                       VkSurfaceKHR surface) {
+VkSwapchain::SwapChainSupportDetails
+VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
+                                   VkSurfaceKHR surface) {
   SwapChainSupportDetails details;
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
@@ -52,7 +52,7 @@ VulkanSwapchain::querySwapChainSupport(VkPhysicalDevice device,
   return details;
 }
 
-VkSurfaceFormatKHR VulkanSwapchain::chooseSwapSurfaceFormat(
+VkSurfaceFormatKHR VkSwapchain::chooseSwapSurfaceFormat(
     const std::vector<VkSurfaceFormatKHR> &availableFormats) {
   // If architecture allows choosing of any format
   if (availableFormats.size() == 1 &&
@@ -95,7 +95,7 @@ VkSurfaceFormatKHR VulkanSwapchain::chooseSwapSurfaceFormat(
   return availableFormats[0];
 }
 
-VkPresentModeKHR VulkanSwapchain::chooseSwapPresentMode(
+VkPresentModeKHR VkSwapchain::chooseSwapPresentMode(
     const std::vector<VkPresentModeKHR> &availablePresentModes) {
   // Prefer MAILBOX if present, also known as triple buffering
   // MoltenVK does not support MAILBOX. See Bill Holling's comment on the issue
@@ -124,8 +124,8 @@ VkPresentModeKHR VulkanSwapchain::chooseSwapPresentMode(
 }
 
 VkExtent2D
-VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
-                                  uint32_t width, uint32_t height) {
+VkSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
+                              uint32_t width, uint32_t height) {
   if (capabilities.currentExtent.width != UINT32_MAX) {
     std::cout << "[Swapchain] Using currentExtent from capabilities: ("
               << capabilities.currentExtent.width << "x"
@@ -148,10 +148,11 @@ VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
   }
 }
 
-bool VulkanSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
-                           VkSurfaceKHR surface, uint32_t width,
-                           uint32_t height, uint32_t graphicsQueueFamilyIndex) {
-  std::cout << "[Swapchain] initialization has begun\n";
+bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
+                       VkSurfaceKHR surface, uint32_t width, uint32_t height,
+                       uint32_t graphicsQueueFamilyIndex) {
+  // Re-init
+  shutdown(device);
 
   m_surface = surface;
 
@@ -194,8 +195,8 @@ bool VulkanSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
 
   uint32_t queueFamilyIndices[] = {graphicsQueueFamilyIndex};
   createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  createInfo.queueFamilyIndexCount = 1;
-  createInfo.pQueueFamilyIndices = queueFamilyIndices;
+  createInfo.queueFamilyIndexCount = 0;
+  createInfo.pQueueFamilyIndices = nullptr;
 
   // Can be set to IDENTITY for non desktop apps
   createInfo.preTransform = support.capabilities.currentTransform;
@@ -233,7 +234,7 @@ bool VulkanSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
   return true;
 }
 
-void VulkanSwapchain::shutdown(VkDevice device) {
+void VkSwapchain::shutdown(VkDevice device) {
   std::cout << "[Swapchain] shutdown has begun\n";
 
   destroySwapchainImageViews(device);
@@ -253,7 +254,7 @@ void VulkanSwapchain::shutdown(VkDevice device) {
   std::cout << "[Swapchain] shutdown completed\n";
 }
 
-bool VulkanSwapchain::createSwapchainImageViews(VkDevice device) {
+bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
   // If called twice, clean up first
   destroySwapchainImageViews(device);
 
@@ -310,7 +311,7 @@ bool VulkanSwapchain::createSwapchainImageViews(VkDevice device) {
   return true;
 }
 
-void VulkanSwapchain::destroySwapchainImageViews(VkDevice device) {
+void VkSwapchain::destroySwapchainImageViews(VkDevice device) {
   if (device == VK_NULL_HANDLE) {
     m_swapchainImageViews.clear();
     return;

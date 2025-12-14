@@ -7,7 +7,7 @@ build: configure
 	cmake --build $(BUILD_DIR)
 
 run: build
-	./$(BUILD_DIR)/src/main
+	./$(BUILD_DIR)/src/engine_app
 
 clean:
 	rm -rf $(BUILD_DIR)

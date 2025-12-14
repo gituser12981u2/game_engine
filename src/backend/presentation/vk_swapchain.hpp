@@ -5,10 +5,10 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
-class VulkanSwapchain {
+class VkSwapchain {
 public:
-  VulkanSwapchain() = default;
-  ~VulkanSwapchain() = default;
+  VkSwapchain() = default;
+  ~VkSwapchain() = default;
 
   bool init(VkPhysicalDevice physicalDevice, VkDevice device,
             VkSurfaceKHR surface, uint32_t width, uint32_t height,
