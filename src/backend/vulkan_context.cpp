@@ -413,8 +413,6 @@ bool VulkanContext::createRenderPass(VkFormat swapchainFormat) {
   }
 
   VkFormat colorFormat = swapchainFormat;
-
-  // VkFormat colorFormat = m_swapchain.swapchainImageFormat();
   if (colorFormat == VK_FORMAT_UNDEFINED) {
     std::cerr << "[RenderPass] Swapchain image format undefined\n";
     return false;
@@ -424,7 +422,7 @@ bool VulkanContext::createRenderPass(VkFormat swapchainFormat) {
   colorAttachment.format = colorFormat;
   colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
   colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
   colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -522,7 +520,6 @@ bool VulkanContext::createGraphicsPipeline(VkExtent2D swapchainExtent) {
   inputAssembly.primitiveRestartEnable = VK_FALSE;
 
   // Viewport / scissor
-  // VkExtent2D extent = m_swapchain.swapchainExtent();
   VkExtent2D extent = swapchainExtent;
 
   VkViewport viewport{};
@@ -551,7 +548,8 @@ bool VulkanContext::createGraphicsPipeline(VkExtent2D swapchainExtent) {
   rasterizer.rasterizerDiscardEnable = VK_FALSE;
   rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizer.lineWidth = 1.0f;
-  rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+  // rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+  rasterizer.cullMode = VK_CULL_MODE_NONE;
   rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -634,7 +632,6 @@ bool VulkanContext::createFrameBuffers(
     return false;
   }
 
-  // const auto &views = m_swapchain.swapchainImageViews();
   const auto &views = swapchainImageViews;
 
   if (views.empty()) {
@@ -645,7 +642,6 @@ bool VulkanContext::createFrameBuffers(
   // Clean if called twice
   destroyFramebuffers();
 
-  // VkExtent2D extent = m_swapchain.swapchainExtent();
   VkExtent2D extent = swapchainExtent;
   m_swapchainFramebuffers.resize(views.size(), VK_NULL_HANDLE);
 
