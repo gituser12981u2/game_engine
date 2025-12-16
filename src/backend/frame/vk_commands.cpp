@@ -46,7 +46,7 @@ bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
   VkCommandBufferAllocateInfo allocInfo{};
   allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   allocInfo.commandPool = m_pool;
-  allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocInfo.level = level;
   allocInfo.commandBufferCount = count;
 
   VkResult res =
@@ -61,7 +61,7 @@ bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
   return true;
 }
 
-void VkCommands::free() {
+void VkCommands::free() noexcept {
   if (m_device != VK_NULL_HANDLE && m_pool != VK_NULL_HANDLE &&
       !m_buffers.empty()) {
     vkFreeCommandBuffers(m_device, m_pool,
@@ -71,7 +71,7 @@ void VkCommands::free() {
   m_buffers.clear();
 }
 
-void VkCommands::shutdown() {
+void VkCommands::shutdown() noexcept {
   free();
 
   if (m_device != VK_NULL_HANDLE && m_pool != VK_NULL_HANDLE) {

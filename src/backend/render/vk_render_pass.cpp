@@ -66,7 +66,7 @@ bool VkRenderPassObj::init(VkDevice device, VkFormat swapchainColorFormat) {
   return true;
 }
 
-void VkRenderPassObj::shutdown() {
+void VkRenderPassObj::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE && m_renderPass != VK_NULL_HANDLE) {
     vkDestroyRenderPass(m_device, m_renderPass, nullptr);
   }

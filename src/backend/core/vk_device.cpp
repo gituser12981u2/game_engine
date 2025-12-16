@@ -1,6 +1,8 @@
 #include "vk_device.hpp"
 
+#include <cstdint>
 #include <iostream>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -8,42 +10,26 @@
 
 namespace {
 
-const std::vector<const char *> kDeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 #ifdef __APPLE__
-    "VK_KHR_portability_subset"
+constexpr std::array<const char *, 2> kDeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    "VK_KHR_portability_subset",
+};
+#else
+constexpr std::array<const char *, 1> kDeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
 #endif
+
+struct QueueFamilyIndices {
+  std::optional<uint32_t> graphicsFamily;
+
+  [[nodiscard]] bool isComplete() const noexcept {
+    return graphicsFamily.has_value();
+  }
 };
 
-} // namespace
-
-bool VkDeviceCtx::init(VkInstance instance) {
-  if (!pickPhysicalDevice(instance)) {
-    std::cerr << "Failed to find a suitable physical device\n";
-    return false;
-  }
-
-  if (!createLogicalDevice()) {
-    std::cerr << "Failed to create a logical device\n";
-    return false;
-  }
-
-  return true;
-}
-
-void VkDeviceCtx::shutdown() {
-  if (m_device != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(m_device);
-    vkDestroyDevice(m_device, nullptr);
-    m_device = VK_NULL_HANDLE;
-  }
-
-  m_physicalDevice = VK_NULL_HANDLE;
-  m_queues = {};
-}
-
-VkDeviceCtx::QueueFamilyIndices
-VkDeviceCtx::findQueueFamilies(VkPhysicalDevice device) {
+QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
   QueueFamilyIndices indices;
 
   uint32_t queueFamilyCount = 0;
@@ -56,7 +42,7 @@ VkDeviceCtx::findQueueFamilies(VkPhysicalDevice device) {
   for (uint32_t i = 0; i < queueFamilyCount; ++i) {
     const auto &q = queueFamilies[i];
 
-    if (q.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+    if ((q.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0U) {
       indices.graphicsFamily = i;
       // TODO maybe look for compute queue or dedicated transfer
       break;
@@ -66,7 +52,7 @@ VkDeviceCtx::findQueueFamilies(VkPhysicalDevice device) {
   return indices;
 }
 
-bool VkDeviceCtx::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
   uint32_t extensionCount = 0;
   vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount,
                                        nullptr);
@@ -91,6 +77,33 @@ bool VkDeviceCtx::checkDeviceExtensionSupport(VkPhysicalDevice device) {
   }
 
   return true;
+}
+
+} // namespace
+
+bool VkDeviceCtx::init(VkInstance instance) {
+  if (!pickPhysicalDevice(instance)) {
+    std::cerr << "Failed to find a suitable physical device\n";
+    return false;
+  }
+
+  if (!createLogicalDevice()) {
+    std::cerr << "Failed to create a logical device\n";
+    return false;
+  }
+
+  return true;
+}
+
+void VkDeviceCtx::shutdown() noexcept {
+  if (m_device != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(m_device);
+    vkDestroyDevice(m_device, nullptr);
+    m_device = VK_NULL_HANDLE;
+  }
+
+  m_physicalDevice = VK_NULL_HANDLE;
+  m_queues = {};
 }
 
 bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
@@ -136,7 +149,7 @@ bool VkDeviceCtx::createLogicalDevice() {
     return false;
   }
 
-  float queuePriority = 1.0f;
+  float queuePriority = 1.0F;
 
   VkDeviceQueueCreateInfo queueCreateInfo{};
   queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;

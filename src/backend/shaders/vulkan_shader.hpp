@@ -13,7 +13,7 @@ struct VulkanShaderModule {
 
   VulkanShaderModule() = default;
 
-  ~VulkanShaderModule() {
+  ~VulkanShaderModule() noexcept {
     if (m_handle != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
       vkDestroyShaderModule(m_device, m_handle, nullptr);
     }

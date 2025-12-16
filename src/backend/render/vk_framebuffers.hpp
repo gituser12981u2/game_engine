@@ -1,28 +1,46 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkFramebuffers {
 public:
   VkFramebuffers() = default;
-  ~VkFramebuffers() { shutdown(); }
+  ~VkFramebuffers() noexcept { shutdown(); }
 
   VkFramebuffers(const VkFramebuffers &) = delete;
   VkFramebuffers &operator=(const VkFramebuffers &) = delete;
 
+  VkFramebuffers(VkFramebuffers &&other) noexcept { *this = std::move(other); }
+  VkFramebuffers &operator=(VkFramebuffers &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+
+    shutdown();
+
+    m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
+    m_swapchainFramebuffers = std::exchange(other.m_swapchainFramebuffers, {});
+    return *this;
+  }
+
   bool init(VkDevice device, VkRenderPass renderPass,
             const std::vector<VkImageView> &swapchainImageViews,
             VkExtent2D extent);
-  void shutdown();
+  void shutdown() noexcept;
 
-  const std::vector<VkFramebuffer> &handles() const {
+  [[nodiscard]] const std::vector<VkFramebuffer> &handles() const noexcept {
     return m_swapchainFramebuffers;
   }
-  VkFramebuffer at(size_t i) const { return m_swapchainFramebuffers[i]; }
-  size_t size() const { return m_swapchainFramebuffers.size(); }
+  [[nodiscard]] VkFramebuffer at(size_t i) const noexcept {
+    return m_swapchainFramebuffers[i];
+  }
+  [[nodiscard]] size_t size() const noexcept {
+    return m_swapchainFramebuffers.size();
+  }
 
 private:
-  VkDevice m_device = VK_NULL_HANDLE;
-  std::vector<VkFramebuffer> m_swapchainFramebuffers;
+  VkDevice m_device = VK_NULL_HANDLE;                 // non-owning
+  std::vector<VkFramebuffer> m_swapchainFramebuffers; // owning
 };

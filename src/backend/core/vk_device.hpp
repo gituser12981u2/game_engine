@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
+#include <utility>
 #include <vulkan/vulkan_core.h>
 
 struct VkQueues {
@@ -14,28 +14,37 @@ struct VkQueues {
 class VkDeviceCtx {
 public:
   VkDeviceCtx() = default;
-  ~VkDeviceCtx() { shutdown(); }
+  ~VkDeviceCtx() noexcept { shutdown(); }
 
   VkDeviceCtx(const VkDeviceCtx &) = delete;
   VkDeviceCtx &operator=(const VkDeviceCtx &) = delete;
 
-  bool init(VkInstance instance);
-  void shutdown();
+  VkDeviceCtx(VkDeviceCtx &&other) noexcept { *this = std::move(other); }
+  VkDeviceCtx &operator=(VkDeviceCtx &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
 
-  VkPhysicalDevice physicalDevice() const { return m_physicalDevice; }
-  VkDevice device() const { return m_device; }
-  const VkQueues &queues() const { return m_queues; }
+    shutdown();
+
+    m_physicalDevice = std::exchange(other.m_physicalDevice, VK_NULL_HANDLE);
+    m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
+    m_queues = std::exchange(other.m_queues, VkQueues{});
+    return *this;
+  }
+
+  bool init(VkInstance instance);
+  void shutdown() noexcept;
+
+  [[nodiscard]] VkPhysicalDevice physicalDevice() const {
+    return m_physicalDevice;
+  }
+  [[nodiscard]] VkDevice device() const { return m_device; }
+  [[nodiscard]] const VkQueues &queues() const { return m_queues; }
 
 private:
-  struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    bool isComplete() const { return graphicsFamily.has_value(); }
-  };
-
-  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
-  bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-  bool pickPhysicalDevice(VkInstance instance);
-  bool createLogicalDevice();
+  [[nodiscard]] bool pickPhysicalDevice(VkInstance instance);
+  [[nodiscard]] bool createLogicalDevice();
 
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
   VkDevice m_device = VK_NULL_HANDLE;

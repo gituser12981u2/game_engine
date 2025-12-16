@@ -8,7 +8,12 @@
 bool VkPresenter::init(VkInstance instance, VkPhysicalDevice physicalDevice,
                        VkDevice device, GLFWwindow *window, uint32_t width,
                        uint32_t height, uint32_t graphicsQueueFamilyIndex) {
-  if (!window) {
+  if (device == VK_NULL_HANDLE) {
+    std::cerr << "[Presenter] device is null\n";
+    return false;
+  }
+
+  if (window == nullptr) {
     std::cerr << "[Presenter] window is null\n";
     return false;
   }
@@ -51,13 +56,9 @@ bool VkPresenter::init(VkInstance instance, VkPhysicalDevice physicalDevice,
   return true;
 }
 
-void VkPresenter::shutdown() {
+void VkPresenter::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE) {
     m_swapchain.shutdown(m_device);
-  } else {
-    // If device is gone, at least drop CPU side handles
-    // (Swapchain/imageview destruction requires VkDevice)
-    // m_swapchain = {}; // only if VkSwapchain is trivially resettable
   }
 
   if (m_instance != VK_NULL_HANDLE && m_surface != VK_NULL_HANDLE) {

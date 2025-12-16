@@ -5,7 +5,6 @@
 #include <vulkan/vulkan_core.h>
 
 bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
-
                           const std::vector<VkImageView> &swapchainImageViews,
                           VkExtent2D extent) {
   if (device == VK_NULL_HANDLE || renderPass == VK_NULL_HANDLE) {
@@ -30,13 +29,13 @@ bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
   m_swapchainFramebuffers.resize(swapchainImageViews.size(), VK_NULL_HANDLE);
 
   for (size_t i = 0; i < swapchainImageViews.size(); ++i) {
-    VkImageView attachments[] = {swapchainImageViews[i]};
+    VkImageView attachments = swapchainImageViews[i];
 
     VkFramebufferCreateInfo fbInfo{};
     fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fbInfo.renderPass = renderPass;
     fbInfo.attachmentCount = 1;
-    fbInfo.pAttachments = attachments;
+    fbInfo.pAttachments = &attachments;
     fbInfo.width = extent.width;
     fbInfo.height = extent.height;
     fbInfo.layers = 1;
@@ -56,7 +55,7 @@ bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
   return true;
 }
 
-void VkFramebuffers::shutdown() {
+void VkFramebuffers::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE) {
     for (VkFramebuffer fb : m_swapchainFramebuffers) {
       if (fb != VK_NULL_HANDLE) {

@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vulkan/vulkan_core.h>
 
 class VkPresenter;
@@ -16,18 +17,44 @@ class VkPresenter;
 class Renderer {
 public:
   Renderer() = default;
-  ~Renderer() { shutdown(); }
+  ~Renderer() noexcept { shutdown(); }
 
   Renderer(const Renderer &) = delete;
   Renderer &operator=(const Renderer &) = delete;
+
+  Renderer(Renderer &&other) noexcept { *this = std::move(other); }
+  Renderer &operator=(Renderer &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+
+    shutdown();
+
+    m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
+    m_graphicsQueue = std::exchange(other.m_graphicsQueue, VK_NULL_HANDLE);
+    m_graphicsQueueFamily =
+        std::exchange(other.m_graphicsQueueFamily, UINT32_MAX);
+    m_framesInFlight = std::exchange(other.m_framesInFlight, 0U);
+
+    m_commands = std::move(other.m_commands);
+    m_frames = std::move(other.m_frames);
+
+    m_renderPass = std::move(other.m_renderPass);
+    m_pipeline = std::move(other.m_pipeline);
+    m_framebuffers = std::move(other.m_framebuffers);
+
+    m_vertPath = std::exchange(other.m_vertPath, {});
+    m_fragPath = std::exchange(other.m_fragPath, {});
+    return *this;
+  }
 
   bool init(VkDevice device, VkQueue graphicsQueue,
             uint32_t graphicsQueueFamily, VkPresenter &presenter,
             uint32_t framesInFlight, const std::string &vertSpvPath,
             const std::string &fragSpvPath);
-  void shutdown();
+  void shutdown() noexcept;
 
-  bool drawFrame(VkPresenter &presenter);
+  [[nodiscard]] bool drawFrame(VkPresenter &presenter);
 
   bool recreateSwapchainDependent(VkPresenter &presenter,
                                   const std::string &vertSpvPath,

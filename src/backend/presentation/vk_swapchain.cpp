@@ -132,25 +132,25 @@ VkSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
               << capabilities.currentExtent.height << ")\n";
     // The surface size is dictated by the window system (common on macOS)
     return capabilities.currentExtent;
-  } else {
-    VkExtent2D actualExtent = {width, height};
-
-    actualExtent.width =
-        std::clamp(actualExtent.width, capabilities.minImageExtent.width,
-                   capabilities.maxImageExtent.width);
-    actualExtent.height =
-        std::clamp(actualExtent.height, capabilities.minImageExtent.height,
-                   capabilities.maxImageExtent.height);
-
-    std::cout << "[Swapchain] Using clamped extent: (" << actualExtent.width
-              << "x" << actualExtent.height << ")\n";
-    return actualExtent;
   }
+
+  VkExtent2D actualExtent = {width, height};
+
+  actualExtent.width =
+      std::clamp(actualExtent.width, capabilities.minImageExtent.width,
+                 capabilities.maxImageExtent.width);
+  actualExtent.height =
+      std::clamp(actualExtent.height, capabilities.minImageExtent.height,
+                 capabilities.maxImageExtent.height);
+
+  std::cout << "[Swapchain] Using clamped extent: (" << actualExtent.width
+            << "x" << actualExtent.height << ")\n";
+  return actualExtent;
 }
 
 bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
                        VkSurfaceKHR surface, uint32_t width, uint32_t height,
-                       uint32_t graphicsQueueFamilyIndex) {
+                       [[maybe_unused]] uint32_t graphicsQueueFamilyIndex) {
   // Re-init
   shutdown(device);
 
@@ -193,11 +193,17 @@ bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
   createInfo.imageArrayLayers = 1;
   createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   createInfo.presentMode = presentMode;
-
-  uint32_t queueFamilyIndices[] = {graphicsQueueFamilyIndex};
   createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   createInfo.queueFamilyIndexCount = 0;
   createInfo.pQueueFamilyIndices = nullptr;
+
+  // if (graphicsQueueFamilyIndex != presentQueueFamilyIndex) {
+  // TODO: VK_SHARING_MODE_CONCURRENT
+  // } else {
+  //   createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  //   createInfo.queueFamilyIndexCount = 0;
+  //   createInfo.pQueueFamilyIndices = nullptr;
+  // }
 
   // Can be set to IDENTITY for non desktop apps
   createInfo.preTransform = support.capabilities.currentTransform;
@@ -236,7 +242,7 @@ bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
   return true;
 }
 
-void VkSwapchain::shutdown(VkDevice device) {
+void VkSwapchain::shutdown(VkDevice device) noexcept {
   std::cout << "[Swapchain] shutdown has begun\n";
 
   destroySwapchainImageViews(device);
@@ -277,7 +283,7 @@ bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
     return false;
   }
 
-  m_swapchainImageViews.resize(images.size(), VK_NULL_HANDLE);
+  m_swapChainImageViews.resize(images.size(), VK_NULL_HANDLE);
 
   for (size_t i = 0; i < images.size(); ++i) {
     VkImageViewCreateInfo viewInfo{};
@@ -298,7 +304,7 @@ bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
     viewInfo.subresourceRange.layerCount = 1;
 
     VkResult res = vkCreateImageView(device, &viewInfo, nullptr,
-                                     &m_swapchainImageViews[i]);
+                                     &m_swapChainImageViews[i]);
     if (res != VK_SUCCESS) {
       std::cerr << "[Swapchain] vkCreateImageView() failed at index " << i
                 << " error=" << res << "\n";
@@ -308,21 +314,21 @@ bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
     }
   }
 
-  std::cout << "[Swapchain] Created " << m_swapchainImageViews.size()
+  std::cout << "[Swapchain] Created " << m_swapChainImageViews.size()
             << " swapchain image views\n";
   return true;
 }
 
-void VkSwapchain::destroySwapchainImageViews(VkDevice device) {
+void VkSwapchain::destroySwapchainImageViews(VkDevice device) noexcept {
   if (device == VK_NULL_HANDLE) {
-    m_swapchainImageViews.clear();
+    m_swapChainImageViews.clear();
     return;
   }
 
-  for (VkImageView v : m_swapchainImageViews) {
+  for (VkImageView v : m_swapChainImageViews) {
     if (v != VK_NULL_HANDLE) {
       vkDestroyImageView(device, v, nullptr);
     }
   }
-  m_swapchainImageViews.clear();
+  m_swapChainImageViews.clear();
 }

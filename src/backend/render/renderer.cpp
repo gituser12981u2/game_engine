@@ -82,7 +82,7 @@ bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
 }
 
 // Destroy in reverse initialization order
-void Renderer::shutdown() {
+void Renderer::shutdown() noexcept {
   // Frame manager
   m_frames.shutdown();
   m_commands.shutdown();
@@ -108,12 +108,12 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   vkBeginCommandBuffer(cmd, &beginInfo);
 
   VkClearValue clear{};
-  clear.color = {{0.05f, 0.05f, 0.08f, 1.0f}};
+  clear.color = {{0.05F, 0.05F, 0.08F, 1.0F}};
 
   VkRenderPassBeginInfo rpBegin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
   rpBegin.renderPass = m_renderPass.handle();
   rpBegin.framebuffer = fb;
-  rpBegin.renderArea.offset = {0, 0};
+  rpBegin.renderArea.offset = VkOffset2D{0, 0};
   rpBegin.renderArea.extent = extent;
   rpBegin.clearValueCount = 1;
   rpBegin.pClearValues = &clear;
