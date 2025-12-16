@@ -35,20 +35,25 @@ public:
     return *this;
   }
 
+  enum class FrameStatus : std::uint8_t { Ok, OutOfDate, Suboptimal, Error };
+
   bool init(VkDevice device, uint32_t framesInFlight,
             uint32_t swapchainImageCount);
   void shutdown() noexcept;
 
   bool resizeSwapchainImages(uint32_t swapchainImageCount);
 
-  bool beginFrame(VkSwapchainKHR swapchain, uint32_t &outImageIndex,
-                  uint64_t timeout = UINT64_MAX);
-  bool submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
-                        uint32_t imageIndex, VkCommandBuffer cmd,
-                        VkPipelineStageFlags waitStage =
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+  FrameStatus beginFrame(VkSwapchainKHR swapchain, uint32_t &outImageIndex,
+                         uint64_t timeout = UINT64_MAX);
+  FrameStatus
+  submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex,
+                   VkCommandBuffer cmd,
+                   VkPipelineStageFlags waitStage =
+                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
   [[nodiscard]] uint32_t currentFrameIndex() const { return m_currentFrame; }
+
+  [[nodiscard]] bool onSwapchainRecreated(uint32_t newSwapchainImageCount);
 
 private:
   [[nodiscard]] bool createSyncObjects();

@@ -39,6 +39,8 @@ public:
             uint32_t height, uint32_t graphicsQueueFamilyIndex);
   void shutdown() noexcept;
 
+  [[nodiscard]] bool recreateSwapchain();
+
   [[nodiscard]] VkFormat imageFormat() const {
     return m_swapchain.swapchainImageFormat();
   }
@@ -57,9 +59,17 @@ public:
     return m_surface != VK_NULL_HANDLE;
   }
 
+  [[nodiscard]] uint32_t imageCount() const {
+    return static_cast<uint32_t>(m_swapchain.swapchainImageViews().size());
+  }
+
 private:
   VkInstance m_instance = VK_NULL_HANDLE;
+  VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
   VkDevice m_device = VK_NULL_HANDLE;
+
+  GLFWwindow *m_window = nullptr;
+  uint32_t m_graphicsQueueFamilyIndex = UINT32_MAX;
 
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSwapchain m_swapchain;

@@ -12,6 +12,8 @@ target_include_directories(engine_render
 
 target_link_libraries(engine_render
     PUBLIC
+        engine::frame
+        engine::presentation
         Vulkan::Vulkan
 )
 

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <vulkan/vulkan_core.h>
 
 bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
@@ -132,8 +133,15 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
     return false;
   }
 
+  using FrameStatus = VkFrameManager::FrameStatus;
+
   uint32_t imageIndex = 0;
-  if (!m_frames.beginFrame(presenter.swapchain(), imageIndex)) {
+  auto st = m_frames.beginFrame(presenter.swapchain(), imageIndex);
+  if (st == FrameStatus::OutOfDate) {
+    (void)recreateSwapchainDependent(presenter, m_vertPath, m_fragPath);
+    return true;
+  }
+  if (st != FrameStatus::Ok && st != FrameStatus::Suboptimal) {
     return false;
   }
 
@@ -142,6 +150,58 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
 
   recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent());
 
-  return m_frames.submitAndPresent(m_graphicsQueue, presenter.swapchain(),
-                                   imageIndex, cmd);
+  auto pst = m_frames.submitAndPresent(m_graphicsQueue, presenter.swapchain(),
+                                       imageIndex, cmd);
+
+  // TODO: handle SUBOPTIMAL recreate, i.e when convienent instead of now
+  if (pst == FrameStatus::OutOfDate) {
+    (void)recreateSwapchainDependent(presenter, m_vertPath, m_fragPath);
+    return true;
+  }
+  return pst == FrameStatus::Ok || pst == FrameStatus::Suboptimal;
+}
+
+bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
+                                          const std::string &vertSpvPath,
+                                          const std::string &fragSpvPath) {
+  if (m_device == VK_NULL_HANDLE) {
+    return false;
+  }
+
+  vkDeviceWaitIdle(m_device);
+
+  m_framebuffers.shutdown();
+  m_pipeline.shutdown();
+  m_renderPass.shutdown();
+
+  if (!presenter.recreateSwapchain()) {
+    return false;
+  }
+
+  // Recreate render pass (format can change)
+  // TODO: conditionalize for only if format changes
+  if (!m_renderPass.init(m_device, presenter.imageFormat())) {
+    return false;
+  }
+
+  // Recreate pipeline (extent can change)
+  // TODO: make viewport dynamic so pipeline doesn't have to be rebuilt
+  if (!m_pipeline.init(m_device, m_renderPass.handle(), presenter.extent(),
+                       vertSpvPath, fragSpvPath)) {
+    return false;
+  }
+
+  // Recreate framebuffers
+  if (!m_framebuffers.init(m_device, m_renderPass.handle(),
+                           presenter.imageViews(), presenter.extent())) {
+    return false;
+  }
+
+  const uint32_t imageCount = presenter.imageCount();
+  m_commands.free();
+  if (!m_commands.allocate(imageCount)) {
+    return false;
+  }
+
+  return m_frames.onSwapchainRecreated(imageCount);
 }

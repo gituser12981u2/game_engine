@@ -69,3 +69,27 @@ void VkPresenter::shutdown() noexcept {
   m_device = VK_NULL_HANDLE;
   m_instance = VK_NULL_HANDLE;
 }
+
+bool VkPresenter::recreateSwapchain() {
+  if (!isInitialized() || m_device == VK_NULL_HANDLE ||
+      m_physicalDevice == VK_NULL_HANDLE || m_window == nullptr) {
+    return false;
+  }
+
+  int fbWidth = 0;
+  int fbHeight = 0;
+  glfwGetFramebufferSize(m_window, &fbWidth, &fbHeight);
+
+  // Skip recreate while minimized
+  if (fbWidth == 0 || fbHeight == 0) {
+    return false;
+  }
+
+  if (!m_swapchain.init(
+          m_physicalDevice, m_device, m_surface, static_cast<uint32_t>(fbWidth),
+          static_cast<uint32_t>(fbHeight), m_graphicsQueueFamilyIndex)) {
+    return false;
+  }
+
+  return m_swapchain.createSwapchainImageViews(m_device);
+}

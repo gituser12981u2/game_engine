@@ -3,9 +3,8 @@ BUILD_DIR := build
 configure:
 	cmake -S . -B $(BUILD_DIR) -G Ninja
 
-tidy: configure
-	clang-tidy -p $(BUILD_DIR) \
-		$(shell find src -name '*.cpp' -o -name '*.hpp')
+build: configure
+	cmake --build $(BUILD_DIR)
 
 run: build 
 	./$(BUILD_DIR)/src/engine_app
