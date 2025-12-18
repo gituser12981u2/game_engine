@@ -1,14 +1,20 @@
 #include "renderer.hpp"
 #include "../presentation/vk_presenter.hpp"
+#include "../resources/vk_buffer.hpp"
+#include "vertex.hpp"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
+#include <numbers>
 #include <string>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
-bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
-                    uint32_t graphicsQueueFamily, VkPresenter &presenter,
-                    uint32_t framesInFlight, const std::string &vertSpvPath,
+bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
+                    VkQueue graphicsQueue, uint32_t graphicsQueueFamily,
+                    VkPresenter &presenter, uint32_t framesInFlight,
+                    const std::string &vertSpvPath,
                     const std::string &fragSpvPath) {
   if (device == VK_NULL_HANDLE || graphicsQueue == VK_NULL_HANDLE) {
     std::cerr << "[Renderer] Invalid device/queue\n";
@@ -29,6 +35,7 @@ bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
   shutdown();
 
   m_device = device;
+  m_physicalDevice = physicalDevice;
   m_graphicsQueue = graphicsQueue;
   m_graphicsQueueFamily = graphicsQueueFamily;
   m_framesInFlight = framesInFlight;
@@ -65,6 +72,20 @@ bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
     return false;
   }
 
+  if (!m_uploader.init(m_physicalDevice, m_device, m_graphicsQueue,
+                       &m_commands)) {
+    std::cerr << "[Renderer] Failed to init uploader\n";
+    shutdown();
+    return false;
+  }
+
+  // Create Geometry
+  if (!initTestGeometry()) {
+    std::cerr << "[Renderer] Failed to init geometry\n";
+    shutdown();
+    return false;
+  }
+
   // Allocate buffer per frame
   if (!m_commands.allocate(m_framesInFlight)) {
     std::cerr << "[Renderer] Failed to allocate command buffers\n";
@@ -83,10 +104,96 @@ bool Renderer::init(VkDevice device, VkQueue graphicsQueue,
   return true;
 }
 
+bool Renderer::initTestGeometry() {
+  // Triangle
+  // const std::array<Vertex, 3> verts = {{
+  //     {{0.0f, -0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // yellow (bottom)
+  //     {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // magenta (top right)
+  //     {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // cyan (top left)
+  // }};
+
+  // Square
+  const std::array<Vertex, 4> verts = {{
+      {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // bottom-left
+      {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // bottom-right
+      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},   // top-right
+      {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // top-left
+  }};
+
+  const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
+
+  // Circle
+  // constexpr uint32_t SEGMENTS = 32;
+  // std::vector<Vertex> verts;
+  // std::vector<uint32_t> indices;
+  //
+  // verts.push_back({{0.0F, 0.0F, 0.0F}, {1, 1, 1}});
+  //
+  // for (uint32_t i = 0; i <= SEGMENTS; ++i) {
+  //   float t = (float)i / SEGMENTS;
+  //   float angle = t * 2.0F * std::numbers::pi_v<float>;
+  //
+  //   float x = std::cos(angle) * 0.5F;
+  //   float y = std::sin(angle) * 0.5F;
+  //
+  //   verts.push_back({{x, y, 0.0F}, {1, 0, 0}});
+  // }
+  //
+  // for (uint32_t i = 1; i <= SEGMENTS; ++i) {
+  //   indices.push_back(0);
+  //   indices.push_back(i);
+  //   indices.push_back(i + 1);
+  // }
+  //
+  // poincare disk in R^2
+  // const std::array<Vertex, 8> verts = {{
+  //     // Bottom arc (curving inward)
+  //     {{-0.6f, -0.4f, 0.0f}, {1, 0, 0}},
+  //     {{0.6f, -0.4f, 0.0f}, {1, 0, 0}},
+  //
+  //     // Right arc
+  //     {{0.8f, -0.1f, 0.0f}, {0, 1, 0}},
+  //     {{0.8f, 0.1f, 0.0f}, {0, 1, 0}},
+  //
+  //     // Top arc
+  //     {{0.6f, 0.4f, 0.0f}, {0, 0, 1}},
+  //     {{-0.6f, 0.4f, 0.0f}, {0, 0, 1}},
+  //
+  //     // Left arc
+  //     {{-0.8f, 0.1f, 0.0f}, {1, 1, 0}},
+  //     {{-0.8f, -0.1f, 0.0f}, {1, 1, 0}},
+  // }};
+  //
+  // const std::array<uint32_t, 18> indices = {
+  //     {0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 0, 0, 2, 4, 4, 6, 0}};
+  //
+  m_mesh.shutdown();
+
+  if (!m_uploader.uploadToDeviceLocalBuffer(
+          verts.data(), sizeof(Vertex) * verts.size(),
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_mesh.vertex)) {
+    return false;
+  }
+
+  if (!m_uploader.uploadToDeviceLocalBuffer(
+          indices.data(), sizeof(uint32_t) * indices.size(),
+          VK_BUFFER_USAGE_INDEX_BUFFER_BIT, m_mesh.index)) {
+    return false;
+  }
+
+  m_mesh.vertexCount = static_cast<uint32_t>(verts.size());
+  m_mesh.indexCount = static_cast<uint32_t>(indices.size());
+  m_mesh.indexType = VK_INDEX_TYPE_UINT32;
+
+  return true;
+}
+
 // Destroy in reverse initialization order
 void Renderer::shutdown() noexcept {
   // Frame manager
   m_frames.shutdown();
+  m_mesh.shutdown();
+  m_uploader.shutdown();
   m_commands.shutdown();
 
   // Swapchain-dependents
@@ -139,9 +246,19 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   scissor.extent = extent;
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  vkCmdDraw(cmd, 3, 1, 0, 0);
-  vkCmdEndRenderPass(cmd);
+  VkDeviceSize vertBufOffset = 0;
+  VkBuffer vertBuf = m_mesh.vertex.handle();
+  vkCmdBindVertexBuffers(cmd, 0, 1, &vertBuf, &vertBufOffset);
 
+  // TODO: use m_mesh.indexed to conditionally vkCmdDraw if not indexed
+  // vkCmdDraw(cmd, m_vertexCount, 1, 0, 0);
+
+  VkDeviceSize indexBufOffset = 0;
+  vkCmdBindIndexBuffer(cmd, m_mesh.index.handle(), indexBufOffset,
+                       m_mesh.indexType);
+  vkCmdDrawIndexed(cmd, m_mesh.indexCount, 1, 0, 0, 0);
+
+  vkCmdEndRenderPass(cmd);
   vkEndCommandBuffer(cmd);
 }
 
@@ -221,11 +338,6 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
                            presenter.imageViews(), presenter.extent())) {
     return false;
   }
-
-  // m_commands.free();
-  // if (!m_commands.allocate(imageCount)) {
-  //   return false;
-  // }
 
   const uint32_t imageCount = presenter.imageCount();
   return m_frames.onSwapchainRecreated(imageCount);

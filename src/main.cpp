@@ -113,9 +113,9 @@ int main() {
   }
 
   constexpr uint32_t framesInFlight = 2;
-  if (!renderer.init(device.device(), device.queues().graphics,
-                     device.queues().graphicsFamily, presenter, framesInFlight,
-                     "shaders/bin/shader.vert.spv",
+  if (!renderer.init(device.physicalDevice(), device.device(),
+                     device.queues().graphics, device.queues().graphicsFamily,
+                     presenter, framesInFlight, "shaders/bin/shader.vert.spv",
                      "shaders/bin/shader.frag.spv")) {
     std::cerr << "Failed to initialize renderer\n";
     cleanup();

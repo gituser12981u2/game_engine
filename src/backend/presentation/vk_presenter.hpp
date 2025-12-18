@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <utility>
-#include <vector>
 #include <vulkan/vulkan_core.h>
 
 struct GLFWwindow;

@@ -1,6 +1,7 @@
 #include "vk_commands.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
@@ -58,6 +59,63 @@ bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
   }
 
   std::cout << "[Cmd] Allocated " << m_buffers.size() << " command buffers\n";
+  return true;
+}
+
+bool VkCommands::submitImmediate(
+    VkQueue queue, const std::function<void(VkCommandBuffer)> &record) const {
+  if (m_device == VK_NULL_HANDLE || m_pool == VK_NULL_HANDLE) {
+    std::cerr << "[Commands] submitImmediate: invalid state\n";
+    return false;
+  }
+
+  VkCommandBufferAllocateInfo allocInfo{
+      VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+  allocInfo.commandPool = m_pool;
+  allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocInfo.commandBufferCount = 1;
+
+  VkCommandBuffer cmd = VK_NULL_HANDLE;
+  VkResult res = vkAllocateCommandBuffers(m_device, &allocInfo, &cmd);
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Commands] vkAllocateCommand Buffers failed: " << res << "\n";
+    return false;
+  }
+
+  VkCommandBufferBeginInfo beginInfo{
+      VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+  vkBeginCommandBuffer(cmd, &beginInfo);
+  record(cmd);
+  vkEndCommandBuffer(cmd);
+
+  VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+  VkFence fence = VK_NULL_HANDLE;
+
+  res = vkCreateFence(m_device, &fenceInfo, nullptr, &fence);
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Commands] vkCreateFence failed: " << res << "\n";
+    vkFreeCommandBuffers(m_device, m_pool, 1, &cmd);
+    return false;
+  }
+
+  VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  submit.commandBufferCount = 1;
+  submit.pCommandBuffers = &cmd;
+
+  res = vkQueueSubmit(queue, 1, &submit, fence);
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Commands] vkQueueSubmit failed: " << res << "\n";
+    vkDestroyFence(m_device, fence, nullptr);
+    vkFreeCommandBuffers(m_device, m_pool, 1, &cmd);
+    return false;
+  }
+
+  vkWaitForFences(m_device, 1, &fence, VK_TRUE, UINT64_MAX);
+
+  vkDestroyFence(m_device, fence, nullptr);
+  vkFreeCommandBuffers(m_device, m_pool, 1, &cmd);
   return true;
 }
 

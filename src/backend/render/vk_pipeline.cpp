@@ -1,5 +1,7 @@
 #include "vk_pipeline.hpp"
+#include "../resources/vertex.hpp"
 #include "../shaders/vulkan_shader.hpp"
+
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -66,7 +68,7 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 }
 
 bool VkGraphicsPipeline::createPipelineLayout() {
-  // Pipeline layout: no descriptors/push constants for now
+  // TODO: Pipeline layout: not pushing color constants for now
   VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
   pipelineLayoutInfo.setLayoutCount = 0;
@@ -88,13 +90,17 @@ bool VkGraphicsPipeline::createPipelineLayout() {
 bool VkGraphicsPipeline::createGraphicsPipeline(
     VkRenderPass renderPass, const VkPipelineShaderStageCreateInfo *stages,
     uint32_t stageCount) {
-  // TODO: Vertex input: none for now
+  VkVertexInputBindingDescription binding = Vertex::bindingDescription();
+  std::array<VkVertexInputAttributeDescription, 2> attributes{};
+  Vertex::attributeDescriptions(attributes.data());
+
   VkPipelineVertexInputStateCreateInfo vertexInput{};
   vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertexInput.vertexBindingDescriptionCount = 0;
-  vertexInput.pVertexBindingDescriptions = nullptr;
-  vertexInput.vertexAttributeDescriptionCount = 0;
-  vertexInput.pVertexAttributeDescriptions = nullptr;
+  vertexInput.vertexBindingDescriptionCount = 1;
+  vertexInput.pVertexBindingDescriptions = &binding;
+  vertexInput.vertexAttributeDescriptionCount =
+      static_cast<uint32_t>(attributes.size());
+  vertexInput.pVertexAttributeDescriptions = attributes.data();
 
   // Input assembly
   VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
