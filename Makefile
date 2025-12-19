@@ -3,7 +3,6 @@ BUILD_DIR := build
 configure:
 	cmake -S . -B $(BUILD_DIR) -G Ninja
 
-
 	mkdir -p shaders/bin
 
 	glslc src/backend/shaders/shader.frag -o shaders/bin/shader.frag.spv

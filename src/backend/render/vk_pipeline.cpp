@@ -1,12 +1,13 @@
 #include "vk_pipeline.hpp"
+#include "../resources/vertex.hpp"
 #include "../shaders/vulkan_shader.hpp"
+
 #include <array>
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <vulkan/vulkan_core.h>
 
-// TODO AFTER REFACTOR: make viewport/scissor dynamic
 bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
                               VkExtent2D extent, const std::string &vertSpvPath,
                               const std::string &fragSpvPath) {
@@ -56,7 +57,7 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 
   const std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{vertStage,
                                                                     fragStage};
-  if (!createGraphicsPipeline(renderPass, extent, shaderStages.data(),
+  if (!createGraphicsPipeline(renderPass, shaderStages.data(),
                               static_cast<uint32_t>(shaderStages.size()))) {
     shutdown();
     return false;
@@ -67,7 +68,7 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 }
 
 bool VkGraphicsPipeline::createPipelineLayout() {
-  // Pipeline layout: no descriptors/push constants for now
+  // TODO: Pipeline layout: not pushing color constants for now
   VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
   pipelineLayoutInfo.setLayoutCount = 0;
@@ -87,15 +88,19 @@ bool VkGraphicsPipeline::createPipelineLayout() {
 }
 
 bool VkGraphicsPipeline::createGraphicsPipeline(
-    VkRenderPass renderPass, VkExtent2D extent,
-    const VkPipelineShaderStageCreateInfo *stages, uint32_t stageCount) {
-  // TODO: Vertex input: none for now
+    VkRenderPass renderPass, const VkPipelineShaderStageCreateInfo *stages,
+    uint32_t stageCount) {
+  VkVertexInputBindingDescription binding = Vertex::bindingDescription();
+  std::array<VkVertexInputAttributeDescription, 2> attributes{};
+  Vertex::attributeDescriptions(attributes.data());
+
   VkPipelineVertexInputStateCreateInfo vertexInput{};
   vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertexInput.vertexBindingDescriptionCount = 0;
-  vertexInput.pVertexBindingDescriptions = nullptr;
-  vertexInput.vertexAttributeDescriptionCount = 0;
-  vertexInput.pVertexAttributeDescriptions = nullptr;
+  vertexInput.vertexBindingDescriptionCount = 1;
+  vertexInput.pVertexBindingDescriptions = &binding;
+  vertexInput.vertexAttributeDescriptionCount =
+      static_cast<uint32_t>(attributes.size());
+  vertexInput.pVertexAttributeDescriptions = attributes.data();
 
   // Input assembly
   VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -104,25 +109,22 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
   inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-  // Viewport / scissor
-  VkViewport viewport{};
-  viewport.x = 0.0F;
-  viewport.y = 0.0F;
-  viewport.width = static_cast<float>(extent.width);
-  viewport.height = static_cast<float>(extent.height);
-  viewport.minDepth = 0.0F;
-  viewport.maxDepth = 1.0F;
-
-  VkRect2D scissor{};
-  scissor.offset = VkOffset2D{0, 0};
-  scissor.extent = extent;
-
   VkPipelineViewportStateCreateInfo viewportState{};
   viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
   viewportState.viewportCount = 1;
-  viewportState.pViewports = &viewport;
+  viewportState.pViewports = nullptr;
   viewportState.scissorCount = 1;
-  viewportState.pScissors = &scissor;
+  viewportState.pScissors = nullptr;
+
+  std::array<VkDynamicState, 2> dynamicStates = {
+      VK_DYNAMIC_STATE_VIEWPORT,
+      VK_DYNAMIC_STATE_SCISSOR,
+  };
+
+  VkPipelineDynamicStateCreateInfo dynamicState{};
+  dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+  dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+  dynamicState.pDynamicStates = dynamicStates.data();
 
   // Rasterizer
   VkPipelineRasterizationStateCreateInfo rasterizer{};
@@ -168,7 +170,7 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
   pipelineInfo.pMultisampleState = &multisampling;
   pipelineInfo.pDepthStencilState = nullptr; // TODO: add
   pipelineInfo.pColorBlendState = &colorBlending;
-  pipelineInfo.pDynamicState = nullptr;
+  pipelineInfo.pDynamicState = &dynamicState;
   pipelineInfo.layout = m_pipelineLayout;
   pipelineInfo.renderPass = renderPass;
   pipelineInfo.subpass = 0;

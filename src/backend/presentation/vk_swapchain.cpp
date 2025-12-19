@@ -151,8 +151,10 @@ VkSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
 bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
                        VkSurfaceKHR surface, uint32_t width, uint32_t height,
                        [[maybe_unused]] uint32_t graphicsQueueFamilyIndex) {
-  // Re-init
-  shutdown(device);
+
+  VkSwapchainKHR old = m_swapChain;
+
+  destroySwapchainImageViews(device);
 
   m_surface = surface;
 
@@ -196,15 +198,6 @@ bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
   createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   createInfo.queueFamilyIndexCount = 0;
   createInfo.pQueueFamilyIndices = nullptr;
-
-  // if (graphicsQueueFamilyIndex != presentQueueFamilyIndex) {
-  // TODO: VK_SHARING_MODE_CONCURRENT
-  // } else {
-  //   createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  //   createInfo.queueFamilyIndexCount = 0;
-  //   createInfo.pQueueFamilyIndices = nullptr;
-  // }
-
   // Can be set to IDENTITY for non desktop apps
   createInfo.preTransform = support.capabilities.currentTransform;
   // Usually opaque
@@ -212,8 +205,6 @@ bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
   createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
   // Clipped pixels are rendered out
   createInfo.clipped = VK_TRUE;
-  // TODO: Handle reusing swapchain for resizing of surface.
-  createInfo.oldSwapchain = VK_NULL_HANDLE;
 
   std::cout << "[Swapchain] preTransform = "
             << support.capabilities.currentTransform << "\n";
@@ -221,13 +212,22 @@ bool VkSwapchain::init(VkPhysicalDevice physicalDevice, VkDevice device,
       << "[Swapchain] compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR\n";
   std::cout << "[Swapchain] clipped = VK_TRUE\n";
 
+  createInfo.oldSwapchain = old;
+
+  VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
   VkResult result =
-      vkCreateSwapchainKHR(device, &createInfo, nullptr, &m_swapChain);
+      vkCreateSwapchainKHR(device, &createInfo, nullptr, &newSwapchain);
   if (result != VK_SUCCESS) {
-    std::cerr << "[Swapchain] ERROR: vkCreateSwapchainKHR failed: " << result
-              << "\n";
+    std::cerr << "[Swapchain] vkCreateSwapchainKHR failed: " << result << "\n";
     return false;
   }
+
+  // Destroy old swapchain
+  if (old != VK_NULL_HANDLE) {
+    vkDestroySwapchainKHR(device, old, nullptr);
+  }
+
+  m_swapChain = newSwapchain;
 
   vkGetSwapchainImagesKHR(device, m_swapChain, &imageCount, nullptr);
   m_swapChainImages.resize(imageCount);

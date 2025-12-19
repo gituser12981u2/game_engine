@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -33,6 +34,10 @@ public:
 
   bool allocate(uint32_t count,
                 VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+  bool
+  submitImmediate(VkQueue queue,
+                  const std::function<void(VkCommandBuffer)> &record) const;
   void free() noexcept;
 
   [[nodiscard]] VkCommandPool pool() const noexcept { return m_pool; }

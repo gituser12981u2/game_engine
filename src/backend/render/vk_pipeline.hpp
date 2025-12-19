@@ -48,7 +48,7 @@ public:
 private:
   [[nodiscard]] bool createPipelineLayout();
   [[nodiscard]] bool
-  createGraphicsPipeline(VkRenderPass renderPass, VkExtent2D extent,
+  createGraphicsPipeline(VkRenderPass renderPass,
                          const VkPipelineShaderStageCreateInfo *stages,
                          uint32_t stageCount);
 

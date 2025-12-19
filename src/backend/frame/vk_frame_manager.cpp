@@ -1,13 +1,12 @@
 #include "vk_frame_manager.hpp"
 
 #include <cstdint>
+#include <ctime>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
 constexpr uint32_t kOneFence = 1;
 constexpr VkBool32 kWaitAll = VK_TRUE;
-
-// TODO: allocate command buffers per framesInFlight instead of swapchain image
 
 bool VkFrameManager::init(VkDevice device, uint32_t framesInFlight,
                           uint32_t swapchainImageCount) {
@@ -59,7 +58,7 @@ bool VkFrameManager::createSyncObjects() {
 
     if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) !=
         VK_SUCCESS) {
-      std::cerr << "[Frame] Failed to create inFligh fence\n";
+      std::cerr << "[Frame] Failed to create inFlight fence\n";
       return false;
     }
   }
@@ -108,14 +107,15 @@ void VkFrameManager::destroySyncObjects() noexcept {
   m_imagesInFlight.clear();
 }
 
-bool VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
-                                uint32_t &outImageIndex, uint64_t timeout) {
+VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
+                                                       uint32_t &outImageIndex,
+                                                       uint64_t timeout) {
   if (m_device == VK_NULL_HANDLE) {
-    return false;
+    return FrameStatus::Error;
   }
 
   if (swapchain == VK_NULL_HANDLE) {
-    return false;
+    return FrameStatus::Error;
   }
 
   VkFence frameFence = m_inFlightFences[m_currentFrame];
@@ -125,7 +125,7 @@ bool VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
       vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
   if (waitRes != VK_SUCCESS) {
     std::cerr << "[Frame] vkWaitForFences failed: " << waitRes << "\n";
-    return false;
+    return FrameStatus::Error;
   }
 
   // Acquire image
@@ -133,13 +133,20 @@ bool VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
                                              m_imageAvailable[m_currentFrame],
                                              VK_NULL_HANDLE, &outImageIndex);
   if (acq == VK_ERROR_OUT_OF_DATE_KHR) {
-    // TODO: signal swapchain recreation
-    return false;
+    std::cerr << "[Frame] vkAcquireNextImageKHR returned OUT_OF_DATE\n";
+    return FrameStatus::OutOfDate;
   }
 
-  if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) {
+  if (acq == VK_SUBOPTIMAL_KHR) {
+    // TODO: signal recreate swapchain when convienent
+  } else if (acq != VK_SUCCESS) {
     std::cerr << "[Frame] vkAcquireNextImageKHR failed: " << acq << "\n";
-    return false;
+    return FrameStatus::Error;
+  }
+
+  if (outImageIndex >= m_imagesInFlight.size()) {
+    std::cerr << "[Frame] imageIndex out of range\n";
+    return FrameStatus::Error;
   }
 
   if (m_imagesInFlight[outImageIndex] != VK_NULL_HANDLE) {
@@ -148,21 +155,21 @@ bool VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
   }
 
   m_imagesInFlight[outImageIndex] = frameFence;
-
   vkResetFences(m_device, kOneFence, &frameFence);
 
-  return true;
+  return (acq == VK_SUBOPTIMAL_KHR) ? FrameStatus::Suboptimal : FrameStatus::Ok;
 }
 
-bool VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
-                                      uint32_t imageIndex, VkCommandBuffer cmd,
-                                      VkPipelineStageFlags waitStage) {
+VkFrameManager::FrameStatus
+VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
+                                 uint32_t imageIndex, VkCommandBuffer cmd,
+                                 VkPipelineStageFlags waitStage) {
   if (m_device == VK_NULL_HANDLE) {
-    return false;
+    return FrameStatus::Error;
   }
 
   if (queue == VK_NULL_HANDLE) {
-    return false;
+    return FrameStatus::Error;
   }
 
   VkSemaphore waitSem = m_imageAvailable[m_currentFrame];
@@ -181,7 +188,7 @@ bool VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
   VkResult sub = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
   if (sub != VK_SUCCESS) {
     std::cerr << "[Frame] vkQueueSubmit failed: " << sub << "\n";
-    return false;
+    return FrameStatus::Error;
   }
 
   VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -194,18 +201,56 @@ bool VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
   VkResult pres = vkQueuePresentKHR(queue, &present);
 
   if (pres == VK_ERROR_OUT_OF_DATE_KHR) {
-    // TODO: recreate swapchain since surface changed
-    std::cerr << "[Frame] vkQueuePresentKHR returned OUT_OF_DATE_KHR\n";
-    return false;
+    std::cerr << "[Frame] vkQueuePresentKHR returned OUT_OF_DATE\n";
+    return FrameStatus::OutOfDate;
   }
 
-  if (pres != VK_SUCCESS && pres != VK_SUBOPTIMAL_KHR) {
+  if (pres == VK_SUBOPTIMAL_KHR) {
+    static bool logged = false;
+    if (!logged) {
+      std::cerr << "[Frame] vkQueuePresentKHR returned SUBOPTIMAL\n";
+      logged = true;
+    }
+
+    m_currentFrame = (m_currentFrame + 1) % m_framesInFlight;
+    return FrameStatus::Suboptimal;
+  }
+
+  if (pres != VK_SUCCESS) {
     std::cerr << "[Frame] vkQueuePresentKHR failed: " << pres << "\n";
+    return FrameStatus::Error;
+  }
+
+  static bool logged = false;
+  logged = false;
+  m_currentFrame = (m_currentFrame + 1) % m_framesInFlight;
+  return FrameStatus::Ok;
+}
+
+bool VkFrameManager::onSwapchainRecreated(uint32_t newSwapchainImageCount) {
+  if (m_device == VK_NULL_HANDLE || newSwapchainImageCount == 0) {
     return false;
   }
 
-  // VK_SUCCESS or VK_SUBOPTIMAL_KHR
-  // TODO: schedule recrate of swapchain for SUBOPTIMAL
-  m_currentFrame = (m_currentFrame + 1) % m_framesInFlight;
+  for (VkSemaphore s : m_renderFinished) {
+    if (s != VK_NULL_HANDLE) {
+      vkDestroySemaphore(m_device, s, nullptr);
+    }
+  }
+
+  VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+
+  m_swapchainImageCount = newSwapchainImageCount;
+  m_renderFinished.assign(m_swapchainImageCount, VK_NULL_HANDLE);
+  m_imagesInFlight.assign(m_swapchainImageCount, VK_NULL_HANDLE);
+
+  for (uint32_t i = 0; i < m_swapchainImageCount; ++i) {
+    if (vkCreateSemaphore(m_device, &semInfo, nullptr, &m_renderFinished[i]) !=
+        VK_SUCCESS) {
+      std::cerr << "[Frame] Failed to recreate renderFinished semaphore\n";
+      return false;
+    }
+  }
+
   return true;
 }
