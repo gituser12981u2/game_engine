@@ -49,8 +49,14 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
   m_vertPath = vertSpvPath;
   m_fragPath = fragSpvPath;
 
+  if (!m_depth.init(m_physicalDevice, device, presenter.extent())) {
+    std::cerr << "[Renderer] Failed to create depth buffer\n";
+    shutdown();
+    return false;
+  }
+
   // Create render pass
-  if (!m_renderPass.init(m_device, presenter.imageFormat())) {
+  if (!m_renderPass.init(m_device, presenter.imageFormat(), m_depth.format())) {
     std::cerr << "[Renderer] Failed to create render pass\n";
     shutdown();
     return false;
@@ -66,7 +72,8 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
 
   // Create frame buffers
   if (!m_framebuffers.init(m_device, m_renderPass.handle(),
-                           presenter.imageViews(), presenter.extent())) {
+                           presenter.imageViews(), m_depth.view(),
+                           presenter.extent())) {
     std::cerr << "[Renderer] Failed to create framebuffers\n";
     shutdown();
     return false;
@@ -134,6 +141,7 @@ void Renderer::shutdown() noexcept {
   m_framebuffers.shutdown();
   m_pipeline.shutdown();
   m_renderPass.shutdown();
+  m_depth.shutdown();
 
   m_device = VK_NULL_HANDLE;
   m_graphicsQueue = VK_NULL_HANDLE;
@@ -153,14 +161,66 @@ bool Renderer::initTestGeometry() {
   // }};
 
   // Square
-  const std::array<Vertex, 4> verts = {{
-      {glm::vec3(-0.5F, -0.5F, 0.0F), glm::vec3(1.0F, 0.0F, 0.0F)},
-      {glm::vec3(0.5F, -0.5F, 0.0F), glm::vec3(0.0F, 1.0F, 0.0F)},
-      {glm::vec3(0.5F, 0.5F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)},
-      {glm::vec3(-0.5F, 0.5F, 0.0F), glm::vec3(1.0F, 1.0F, 0.0F)},
+  // const std::array<Vertex, 4> verts = {{
+  //     {glm::vec3(-0.5F, -0.5F, 0.0F), glm::vec3(1.0F, 0.0F, 0.0F)},
+  //     {glm::vec3(0.5F, -0.5F, 0.0F), glm::vec3(0.0F, 1.0F, 0.0F)},
+  //     {glm::vec3(0.5F, 0.5F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)},
+  //     {glm::vec3(-0.5F, 0.5F, 0.0F), glm::vec3(1.0F, 1.0F, 0.0F)},
+  // }};
+  //
+  // const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
+
+  // Cube
+  const std::array<Vertex, 24> verts = {{
+      // +Z (front)
+      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(1, 0, 0)},
+      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(1, 0, 0)},
+      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 0)},
+      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 0)},
+
+      // -Z (back)
+      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 0)},
+      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 0)},
+      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0, 1, 0)},
+      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(0, 1, 0)},
+
+      // -X (left)
+      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 0, 1)},
+      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0, 0, 1)},
+      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(0, 0, 1)},
+      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0, 0, 1)},
+
+      // +X (right)
+      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(1, 1, 0)},
+      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(1, 1, 0)},
+      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(1, 1, 0)},
+      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 1, 0)},
+
+      // +Y (top)
+      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 1)},
+      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 1)},
+      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(1, 0, 1)},
+      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(1, 0, 1)},
+
+      // -Y (bottom)
+      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 1)},
+      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 1)},
+      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(0, 1, 1)},
+      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0, 1, 1)},
   }};
 
-  const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
+  const std::array<uint32_t, 36> indices = {{// front
+                                             0, 1, 2, 2, 3, 0,
+                                             // back
+                                             4, 5, 6, 6, 7, 4,
+                                             // left
+                                             8, 9, 10, 10, 11, 8,
+                                             // right
+                                             12, 13, 14, 14, 15, 12,
+                                             // top
+                                             16, 17, 18, 18, 19, 16,
+                                             // bottom
+                                             20, 21, 22, 22, 23, 20}};
 
   // Circle
   // constexpr uint32_t SEGMENTS = 32;
@@ -234,16 +294,18 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
       VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
   vkBeginCommandBuffer(cmd, &beginInfo);
 
-  VkClearValue clear{};
-  clear.color = {{0.05F, 0.05F, 0.08F, 1.0F}};
+  std::array<VkClearValue, 2> clears{};
+  clears[0].color = {{0.05F, 0.05F, 0.08F, 1.0F}};
+  clears[1].depthStencil =
+      VkClearDepthStencilValue{.depth = 1.0F, .stencil = 0};
 
   VkRenderPassBeginInfo rpBegin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
   rpBegin.renderPass = m_renderPass.handle();
   rpBegin.framebuffer = fb;
   rpBegin.renderArea.offset = VkOffset2D{0, 0};
   rpBegin.renderArea.extent = extent;
-  rpBegin.clearValueCount = 1;
-  rpBegin.pClearValues = &clear;
+  rpBegin.clearValueCount = static_cast<uint32_t>(clears.size());
+  rpBegin.pClearValues = clears.data();
 
   vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -362,6 +424,7 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   }
 
   const VkFormat oldFormat = presenter.imageFormat();
+  const VkExtent2D oldExtent = presenter.extent();
 
   vkDeviceWaitIdle(m_device);
 
@@ -375,11 +438,26 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   const VkFormat newFormat = presenter.imageFormat();
   const bool formatChanged = (newFormat != oldFormat);
 
+  // Keep depth unless extent changes
+  const VkExtent2D newExtent = presenter.extent();
+  const bool extentChanged = oldExtent.width != newExtent.width ||
+                             oldExtent.height != newExtent.height;
+
+  if (extentChanged) {
+    m_depth.shutdown();
+
+    // Recreate depth
+    if (!m_depth.init(m_physicalDevice, m_device, presenter.extent())) {
+      return false;
+    }
+  }
+
   if (formatChanged) {
     m_pipeline.shutdown();
     m_renderPass.shutdown();
 
-    if (!m_renderPass.init(m_device, presenter.imageFormat())) {
+    if (!m_renderPass.init(m_device, presenter.imageFormat(),
+                           m_depth.format())) {
       return false;
     }
 
@@ -391,7 +469,8 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
 
   // Recreate framebuffers
   if (!m_framebuffers.init(m_device, m_renderPass.handle(),
-                           presenter.imageViews(), presenter.extent())) {
+                           presenter.imageViews(), m_depth.view(),
+                           presenter.extent())) {
     return false;
   }
 

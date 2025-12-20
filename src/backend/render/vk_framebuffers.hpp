@@ -27,7 +27,7 @@ public:
 
   bool init(VkDevice device, VkRenderPass renderPass,
             const std::vector<VkImageView> &swapchainImageViews,
-            VkExtent2D extent);
+            VkImageView depthView, VkExtent2D extent);
   void shutdown() noexcept;
 
   [[nodiscard]] const std::vector<VkFramebuffer> &handles() const noexcept {

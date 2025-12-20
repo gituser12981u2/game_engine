@@ -4,6 +4,7 @@
 #include "../frame/vk_frame_manager.hpp"
 #include "../presentation/vk_presenter.hpp"
 #include "mesh_gpu.hpp"
+#include "vk_depth_image.hpp"
 #include "vk_framebuffers.hpp"
 #include "vk_per_frame_uniform.hpp"
 #include "vk_pipeline.hpp"
@@ -97,6 +98,8 @@ private:
   VkRenderPassObj m_renderPass;
   VkGraphicsPipeline m_pipeline;
   VkFramebuffers m_framebuffers;
+
+  VkDepthImage m_depth;
 
   std::string m_vertPath;
   std::string m_fragPath;

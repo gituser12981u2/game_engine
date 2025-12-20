@@ -26,7 +26,8 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, VkFormat swapchainColorFormat);
+  bool init(VkDevice device, VkFormat swapchainColorFormat,
+            VkFormat depthFormat);
   void shutdown() noexcept;
 
   [[nodiscard]] VkRenderPass handle() const { return m_renderPass; }

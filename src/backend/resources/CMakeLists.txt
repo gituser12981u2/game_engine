@@ -2,6 +2,7 @@ add_library(engine_resources STATIC
     vk_buffer.cpp
     vk_uploader.cpp
     vk_per_frame_uniform.cpp
+    vk_depth_image.cpp
 )
 
 target_include_directories(engine_render

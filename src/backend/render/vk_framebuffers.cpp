@@ -1,12 +1,14 @@
 #include "vk_framebuffers.hpp"
 
+#include <array>
+#include <cstdint>
 #include <iostream>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
 bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
                           const std::vector<VkImageView> &swapchainImageViews,
-                          VkExtent2D extent) {
+                          VkImageView depthView, VkExtent2D extent) {
   if (device == VK_NULL_HANDLE || renderPass == VK_NULL_HANDLE) {
     std::cerr << "[Framebuffers] Device or render pass not ready\n";
     return false;
@@ -29,13 +31,14 @@ bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
   m_swapchainFramebuffers.resize(swapchainImageViews.size(), VK_NULL_HANDLE);
 
   for (size_t i = 0; i < swapchainImageViews.size(); ++i) {
-    VkImageView attachments = swapchainImageViews[i];
+    std::array<VkImageView, 2> attachments = {swapchainImageViews[i],
+                                              depthView};
 
     VkFramebufferCreateInfo fbInfo{};
     fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fbInfo.renderPass = renderPass;
-    fbInfo.attachmentCount = 1;
-    fbInfo.pAttachments = &attachments;
+    fbInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    fbInfo.pAttachments = attachments.data();
     fbInfo.width = extent.width;
     fbInfo.height = extent.height;
     fbInfo.layers = 1;
