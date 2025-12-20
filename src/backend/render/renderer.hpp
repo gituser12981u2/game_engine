@@ -5,6 +5,7 @@
 #include "../presentation/vk_presenter.hpp"
 #include "mesh_gpu.hpp"
 #include "vk_framebuffers.hpp"
+#include "vk_per_frame_uniform.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_render_pass.hpp"
 #include "vk_uploader.hpp"
@@ -42,6 +43,8 @@ public:
     m_commands = std::move(other.m_commands);
     m_frames = std::move(other.m_frames);
 
+    // TODO: add m_camera
+
     m_uploader = std::move(other.m_uploader);
     m_mesh = std::move(other.m_mesh);
 
@@ -73,6 +76,9 @@ private:
   bool initTestGeometry();
   void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent);
 
+  // Todo delete: test rotations
+  float m_timeSeconds = 0.0F;
+
   VkDevice m_device = VK_NULL_HANDLE;
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
   VkQueue m_graphicsQueue = VK_NULL_HANDLE;
@@ -82,6 +88,8 @@ private:
 
   VkCommands m_commands;
   VkFrameManager m_frames;
+
+  VkPerFrameUniform m_camera;
 
   MeshGpu m_mesh;
   VkUploader m_uploader;

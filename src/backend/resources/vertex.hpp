@@ -1,33 +1,40 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
-#include <cstdint>
+#include <glm/ext/vector_float3.hpp>
 #include <vulkan/vulkan_core.h>
 
 struct Vertex {
-  float pos[3];
-  float color[3];
+  glm::vec3 pos;
+  glm::vec3 color;
 
   static VkVertexInputBindingDescription bindingDescription() {
-    VkVertexInputBindingDescription b{};
-    b.binding = 0;
-    b.stride = sizeof(Vertex);
-    b.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return b;
+    VkVertexInputBindingDescription binding{};
+    binding.binding = 0;
+    binding.stride = sizeof(Vertex);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    return binding;
   }
 
-  static void attributeDescriptions(VkVertexInputAttributeDescription out[2]) {
+  static std::array<VkVertexInputAttributeDescription, 2>
+  attributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 2> attrs{};
+
     // Location 0 -> vec3 position
-    out[0].location = 0;
-    out[0].binding = 0;
-    out[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    out[0].offset = static_cast<uint32_t>(offsetof(Vertex, pos));
+    attrs[0].location = 0;
+    attrs[0].binding = 0;
+    attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrs[0].offset = offsetof(Vertex, pos);
 
     // Location 1 -> vec3 color
-    out[1].location = 1;
-    out[1].binding = 0;
-    out[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    out[1].offset = static_cast<uint32_t>(offsetof(Vertex, color));
+    attrs[1].location = 1;
+    attrs[1].binding = 0;
+    attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrs[1].offset = offsetof(Vertex, color);
+
+    return attrs;
   }
 };
+
 static_assert(sizeof(Vertex) == sizeof(float) * 6);

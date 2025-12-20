@@ -44,6 +44,9 @@ public:
   [[nodiscard]] bool valid() const noexcept {
     return m_pipelineLayout != VK_NULL_HANDLE;
   }
+  [[nodiscard]] VkDescriptorSetLayout descriptorSetLayout() const noexcept {
+    return m_descriptorSetLayout;
+  }
 
 private:
   [[nodiscard]] bool createPipelineLayout();
@@ -52,7 +55,8 @@ private:
                          const VkPipelineShaderStageCreateInfo *stages,
                          uint32_t stageCount);
 
-  VkDevice m_device = VK_NULL_HANDLE;                 // non-owning
-  VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE; // owning
-  VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;     // owning
+  VkDevice m_device = VK_NULL_HANDLE;                           // non-owning
+  VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;           // owning
+  VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;               // owning
+  VkDescriptorSetLayout m_descriptorSetLayout = VK_NULL_HANDLE; // owning
 };

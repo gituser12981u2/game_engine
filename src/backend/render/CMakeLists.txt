@@ -15,6 +15,8 @@ target_link_libraries(engine_render
         engine::frame
         engine::presentation
         Vulkan::Vulkan
+    PRIVATE
+        glm
 )
 
 add_library(engine::render ALIAS engine_render)

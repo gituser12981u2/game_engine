@@ -1,6 +1,7 @@
 add_library(engine_resources STATIC 
     vk_buffer.cpp
     vk_uploader.cpp
+    vk_per_frame_uniform.cpp
 )
 
 target_include_directories(engine_render
@@ -11,6 +12,8 @@ target_include_directories(engine_render
 target_link_libraries(engine_resources
     PUBLIC
         Vulkan::Vulkan
+    PRIVATE
+        glm
 )
 
 add_library(engine::resources ALIAS engine_resources)

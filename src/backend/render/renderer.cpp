@@ -1,12 +1,18 @@
 #include "renderer.hpp"
 #include "../presentation/vk_presenter.hpp"
 #include "../resources/vk_buffer.hpp"
+#include "camera_ubo.hpp"
 #include "vertex.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/trigonometric.hpp>
 #include <iostream>
-#include <numbers>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -66,8 +72,18 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
     return false;
   }
 
+  // Create command pool
   if (!m_commands.init(m_device, m_graphicsQueueFamily)) {
     std::cerr << "[Renderer] Failed to create the command pool\n";
+    shutdown();
+    return false;
+  }
+
+  // Create camera
+  if (!m_camera.init(m_physicalDevice, m_device,
+                     m_pipeline.descriptorSetLayout(), m_framesInFlight,
+                     sizeof(CameraUBO))) {
+    std::cerr << "[Renderer] Failed to init camera UBO\n";
     shutdown();
     return false;
   }
@@ -104,6 +120,30 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
   return true;
 }
 
+// Destroy in reverse initialization order
+void Renderer::shutdown() noexcept {
+  // Commands-dependents
+  m_frames.shutdown();
+  m_mesh.shutdown();
+  m_uploader.shutdown();
+  m_camera.shutdown();
+
+  m_commands.shutdown();
+
+  // Swapchain-dependents
+  m_framebuffers.shutdown();
+  m_pipeline.shutdown();
+  m_renderPass.shutdown();
+
+  m_device = VK_NULL_HANDLE;
+  m_graphicsQueue = VK_NULL_HANDLE;
+  m_graphicsQueueFamily = UINT32_MAX;
+  m_framesInFlight = 0;
+
+  m_vertPath.clear();
+  m_fragPath.clear();
+}
+
 bool Renderer::initTestGeometry() {
   // Triangle
   // const std::array<Vertex, 3> verts = {{
@@ -114,10 +154,10 @@ bool Renderer::initTestGeometry() {
 
   // Square
   const std::array<Vertex, 4> verts = {{
-      {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // bottom-left
-      {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // bottom-right
-      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},   // top-right
-      {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // top-left
+      {glm::vec3(-0.5F, -0.5F, 0.0F), glm::vec3(1.0F, 0.0F, 0.0F)},
+      {glm::vec3(0.5F, -0.5F, 0.0F), glm::vec3(0.0F, 1.0F, 0.0F)},
+      {glm::vec3(0.5F, 0.5F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)},
+      {glm::vec3(-0.5F, 0.5F, 0.0F), glm::vec3(1.0F, 1.0F, 0.0F)},
   }};
 
   const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
@@ -188,28 +228,6 @@ bool Renderer::initTestGeometry() {
   return true;
 }
 
-// Destroy in reverse initialization order
-void Renderer::shutdown() noexcept {
-  // Frame manager
-  m_frames.shutdown();
-  m_mesh.shutdown();
-  m_uploader.shutdown();
-  m_commands.shutdown();
-
-  // Swapchain-dependents
-  m_framebuffers.shutdown();
-  m_pipeline.shutdown();
-  m_renderPass.shutdown();
-
-  m_device = VK_NULL_HANDLE;
-  m_graphicsQueue = VK_NULL_HANDLE;
-  m_graphicsQueueFamily = UINT32_MAX;
-  m_framesInFlight = 0;
-
-  m_vertPath.clear();
-  m_fragPath.clear();
-}
-
 void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
                            VkExtent2D extent) {
   VkCommandBufferBeginInfo beginInfo{
@@ -230,6 +248,17 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     m_pipeline.pipeline());
+
+  m_camera.bind(cmd, m_pipeline.layout(), 0, m_frames.currentFrameIndex());
+
+  // Push constant (model matrix)
+  glm::mat4 model = glm::mat4(1.0F);
+
+  // TODO REMOVE
+  model = glm::rotate(model, m_timeSeconds, glm::vec3(0.0F, 0.0F, 1.0F));
+
+  vkCmdPushConstants(cmd, m_pipeline.layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(glm::mat4), &model);
 
   // Viewport / scissor
   VkViewport viewport{};
@@ -267,6 +296,12 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
     return false;
   }
 
+  // TODO REMOVE
+  static auto start = std::chrono::steady_clock::now();
+  auto now = std::chrono::steady_clock::now();
+  std::chrono::duration<float> dt = now - start;
+  m_timeSeconds = dt.count();
+
   using FrameStatus = VkFrameManager::FrameStatus;
 
   uint32_t imageIndex = 0;
@@ -281,6 +316,27 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
   }
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
+
+  // Camera
+  // TODO: move this to its own class and make a controller too
+  CameraUBO ubo{};
+  ubo.view =
+      glm::lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F),
+                  glm::vec3(0.0F, 0.0F, 1.0F));
+
+  const auto extent = presenter.extent();
+  const float width = static_cast<float>(extent.width);
+  const float height =
+      static_cast<float>(extent.height > 0 ? extent.height : 1U);
+  const float aspect = width / height;
+
+  ubo.proj = glm::perspective(glm::radians(60.0F), aspect, 0.1F, 100.0F);
+  ubo.proj[1][1] *= -1.0F; // Vulkan clip space
+
+  if (!m_camera.update(frameIndex, &ubo, sizeof(ubo))) {
+    std::cerr << "[Renderer] Failed to update camera UBO\n";
+  }
+
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
   vkResetCommandBuffer(cmd, 0);
 

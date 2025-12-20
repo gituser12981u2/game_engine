@@ -1,6 +1,7 @@
 #include "vk_pipeline.hpp"
 #include "../resources/vertex.hpp"
 #include "../shaders/vulkan_shader.hpp"
+#include "glm/ext/matrix_float4x4.hpp"
 
 #include <array>
 #include <cstdint>
@@ -68,13 +69,36 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 }
 
 bool VkGraphicsPipeline::createPipelineLayout() {
-  // TODO: Pipeline layout: not pushing color constants for now
+  // Descriptor set layout (Camera UBO)
+  VkDescriptorSetLayoutBinding uboBinding{};
+  uboBinding.binding = 0;
+  uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  uboBinding.descriptorCount = 1;
+  uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+  VkDescriptorSetLayoutCreateInfo layoutInfo{
+      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+  layoutInfo.bindingCount = 1;
+  layoutInfo.pBindings = &uboBinding;
+
+  if (vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr,
+                                  &m_descriptorSetLayout) != VK_SUCCESS) {
+    std::cerr << "[Pipeline] Failed to creat descriptor set layout\n";
+    return false;
+  }
+
+  // Push constant (mode matrix)
+  VkPushConstantRange pushRange{};
+  pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+  pushRange.offset = 0;
+  pushRange.size = sizeof(glm::mat4);
+
   VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutInfo.setLayoutCount = 0;
-  pipelineLayoutInfo.pSetLayouts = nullptr;
-  pipelineLayoutInfo.pushConstantRangeCount = 0;
-  pipelineLayoutInfo.pPushConstantRanges = nullptr;
+  pipelineLayoutInfo.setLayoutCount = 1;
+  pipelineLayoutInfo.pSetLayouts = &m_descriptorSetLayout;
+  pipelineLayoutInfo.pushConstantRangeCount = 1;
+  pipelineLayoutInfo.pPushConstantRanges = &pushRange;
 
   const VkResult res = vkCreatePipelineLayout(m_device, &pipelineLayoutInfo,
                                               nullptr, &m_pipelineLayout);
@@ -91,8 +115,7 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
     VkRenderPass renderPass, const VkPipelineShaderStageCreateInfo *stages,
     uint32_t stageCount) {
   VkVertexInputBindingDescription binding = Vertex::bindingDescription();
-  std::array<VkVertexInputAttributeDescription, 2> attributes{};
-  Vertex::attributeDescriptions(attributes.data());
+  auto attributes = Vertex::attributeDescriptions();
 
   VkPipelineVertexInputStateCreateInfo vertexInput{};
   vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -191,6 +214,9 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
 
 void VkGraphicsPipeline::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE) {
+    if (m_descriptorSetLayout != VK_NULL_HANDLE) {
+      vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
+    }
     if (m_graphicsPipeline != VK_NULL_HANDLE) {
       vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
     }
@@ -199,6 +225,7 @@ void VkGraphicsPipeline::shutdown() noexcept {
     }
   }
 
+  m_descriptorSetLayout = VK_NULL_HANDLE;
   m_graphicsPipeline = VK_NULL_HANDLE;
   m_pipelineLayout = VK_NULL_HANDLE;
   m_device = VK_NULL_HANDLE;
