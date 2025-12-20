@@ -16,3 +16,17 @@ multiplayer, and a COD zombies inspired mode.
 
 The focus of this game engine is to make a game playable on all devices with little hassle.
 
+## MVP 1
+
+- [x] Arbitrary 3d Meshes (2025-12-19)
+- [ ] Moveable Camera
+- [ ] Textures
+    - [ ] Albedos (start of PBR)
+    - [ ] Diffuse option
+- [ ] gITF imports
+- [ ] Lighting
+    - [ ] Normals (PBR)
+- [ ] Vulkan Memory Allocator (VMA) refactor 
+- [ ] Mipmaps
+- [ ] Basic physics engine
+- [ ] Player Controller
