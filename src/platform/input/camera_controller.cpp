@@ -7,7 +7,7 @@ CameraController::CameraController(GLFWwindow *window, Camera *camera)
     : m_window(window), m_camera(camera) {}
 
 void CameraController::enableCursorCapture(bool enabled) {
-  if (!m_window) {
+  if (m_window == nullptr) {
     return;
   }
 
@@ -18,7 +18,7 @@ void CameraController::enableCursorCapture(bool enabled) {
 }
 
 void CameraController::update(float dtSeconds) {
-  if (!m_window || !m_camera) {
+  if (m_window == nullptr || m_camera == nullptr) {
     return;
   }
 
@@ -94,4 +94,7 @@ void CameraController::handleKeyboard(float dtSeconds) {
   if (glfwGetKey(m_window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
     enableCursorCapture(false);
   }
+
+  // TODO: add way to lock cursor again
+  // TODO: keep mouse movement available without locked cursor
 }

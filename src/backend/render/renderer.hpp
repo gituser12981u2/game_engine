@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../engine/camera/camera_ubo.hpp"
+#include "../../engine/mesh/vertex.hpp"
 #include "../frame/vk_commands.hpp"
 #include "../frame/vk_frame_manager.hpp"
 #include "../presentation/vk_presenter.hpp"
@@ -15,9 +16,14 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkPresenter;
+
+struct MeshHandle {
+  uint32_t id = 0;
+};
 
 class Renderer {
 public:
@@ -45,10 +51,11 @@ public:
     m_commands = std::move(other.m_commands);
     m_frames = std::move(other.m_frames);
 
-    // TODO: add m_camera
+    m_camera = std::move(other.m_camera);
+    m_cameraUbo = other.m_cameraUbo;
 
     m_uploader = std::move(other.m_uploader);
-    m_mesh = std::move(other.m_mesh);
+    m_meshes = std::move(other.m_meshes);
 
     // Fix uploader pointer to refer to this renderer's commands
     m_uploader.init(m_physicalDevice, m_device, m_graphicsQueue, &m_commands);
@@ -68,7 +75,11 @@ public:
             const std::string &vertSpvPath, const std::string &fragSpvPath);
   void shutdown() noexcept;
 
-  [[nodiscard]] bool drawFrame(VkPresenter &presenter);
+  MeshHandle createMesh(const engine::Vertex *vertices, uint32_t vertexCount,
+                        const uint32_t *indices, uint32_t indexCount);
+  [[nodiscard]] const MeshGpu *mesh(MeshHandle handle) const;
+
+  [[nodiscard]] bool drawFrame(VkPresenter &presenter, MeshHandle mesh);
 
   bool recreateSwapchainDependent(VkPresenter &presenter,
                                   const std::string &vertSpvPath,
@@ -77,8 +88,8 @@ public:
   void setCameraUBO(const CameraUBO &ubo) { m_cameraUbo = ubo; }
 
 private:
-  bool initTestGeometry();
-  void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent);
+  void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent,
+                   const MeshGpu &mesh);
 
   // Todo delete: test rotations
   float m_timeSeconds = 0.0F;
@@ -96,7 +107,7 @@ private:
   VkPerFrameUniform m_camera;
   CameraUBO m_cameraUbo{};
 
-  MeshGpu m_mesh;
+  std::vector<MeshGpu> m_meshes;
   VkUploader m_uploader;
 
   VkRenderPassObj m_renderPass;

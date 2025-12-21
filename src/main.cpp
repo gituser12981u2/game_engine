@@ -3,39 +3,16 @@
 #include "backend/presentation/vk_presenter.hpp"
 #include "backend/render/renderer.hpp"
 #include "engine/camera/camera.hpp"
+#include "engine/geometry/primitives.hpp"
 #include "platform/input/camera_controller.hpp"
-#include <GLFW/glfw3.h>
+#include "platform/window/glfw_window.hpp"
 
+#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <iostream>
-#include <vector>
 #include <vulkan/vulkan_core.h>
 
-static void getFrameBufferSize(GLFWwindow *window, uint32_t &outWidth,
-                               uint32_t &outHeight) {
-  // Get size (in pixels) for swapchain extent
-  // TODO: move this elsewhere
-  int fbWidth = 0;
-  int fbHeight = 0;
-  glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
-
-  // Some platforms can report 0 during minimize
-  if (fbWidth == 0 || fbHeight == 0) {
-    int winWidth = 0;
-    int winHeight = 0;
-    glfwGetWindowSize(window, &winWidth, &winHeight);
-    glfwWaitEvents();
-    fbWidth = winWidth;
-    fbHeight = winHeight;
-  }
-
-  outWidth = fbWidth > 0 ? static_cast<uint32_t>(fbWidth) : 1U;
-  outHeight = fbHeight > 0 ? static_cast<uint32_t>(fbHeight) : 1U;
-}
-
 int main() {
-  GLFWwindow *window = nullptr;
-
   VkInstanceCtx instance;
   VkDeviceCtx device;
   VkPresenter presenter;
@@ -46,43 +23,20 @@ int main() {
       vkDeviceWaitIdle(device.device());
     }
 
+    std::cout << "Entering cleanup\n";
+
     renderer.shutdown();
     presenter.shutdown();
     device.shutdown();
     instance.shutdown();
-
-    if (window) {
-      glfwDestroyWindow(window);
-    }
-
-    glfwTerminate();
   };
 
-  if (glfwInit() == GLFW_FALSE) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return 1;
-  }
-
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-  window = glfwCreateWindow(800, 600, "Hello Window", nullptr, nullptr);
-  if (window == nullptr) {
-    std::cerr << "Failed to create window\n";
+  GlfwWindow window;
+  if (!window.init(800, 600, "Hello Window")) {
+    std::cerr << "Failed to initialize glfw window\n";
     cleanup();
     return 1;
   }
-
-  // Get needed GLFW instance extensions
-  uint32_t glfwExtCount = 0;
-  const char **glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-  if (glfwExts == nullptr || glfwExtCount == 0) {
-    std::cerr << "glfwGetRequiredInstanceExtensions returned nothing\n";
-    cleanup();
-    return 1;
-  }
-
-  std::vector<const char *> platformExtensions(glfwExts,
-                                               glfwExts + glfwExtCount);
 
 #ifndef NDEBUG
   constexpr bool enableValidation = true;
@@ -90,6 +44,14 @@ int main() {
   constexpr bool enableValidation = false;
 #endif
 
+  const auto platformExtensions = window.requiredVulkanExtensions();
+  if (platformExtensions.empty()) {
+    std::cerr << "glfwGetRequiredInstanceExtensions returned nothing\n";
+    cleanup();
+    return 1;
+  }
+
+  // TODO: Make a "presenter" like class that owns instance and device
   if (!instance.init(platformExtensions, enableValidation)) {
     std::cerr << "Failed to initialize Vulkan\n";
     cleanup();
@@ -102,12 +64,12 @@ int main() {
     return 1;
   }
 
+  // TODO: abstract instance, device, presenter, and renderer from main
   uint32_t fbWidth = 0;
   uint32_t fbHeight = 0;
-  getFrameBufferSize(window, fbWidth, fbHeight);
-
+  window.framebufferSize(fbWidth, fbHeight);
   if (!presenter.init(instance.instance(), device.physicalDevice(),
-                      device.device(), window, fbWidth, fbHeight,
+                      device.device(), window.handle(), fbWidth, fbHeight,
                       device.queues().graphicsFamily)) {
     std::cerr << "Failed to initialize presenter\n";
     cleanup();
@@ -125,15 +87,21 @@ int main() {
   }
 
   Camera camera;
-  CameraController controller(window, &camera);
+  CameraController controller(window.handle(), &camera);
   controller.enableCursorCapture(true);
 
   double lastTime = glfwGetTime();
 
-  while (glfwWindowShouldClose(window) == GLFW_FALSE) {
-    glfwPollEvents();
+  auto cubeCpu = engine::primitives::cube();
+  auto cubeGpu = renderer.createMesh(
+      cubeCpu.vertices.data(), (uint32_t)cubeCpu.vertices.size(),
+      cubeCpu.indices.data(), (uint32_t)cubeCpu.indices.size());
 
-    double now = glfwGetTime();
+  // TODO: abstract main loop from main and only keep camera and controller
+  while (!window.shouldClose()) {
+    window.pollEvents();
+
+    const double now = glfwGetTime();
     float dt = static_cast<float>(now - lastTime);
     lastTime = now;
 
@@ -141,7 +109,7 @@ int main() {
 
     renderer.setCameraUBO(camera.makeUbo(presenter.extent()));
 
-    if (!renderer.drawFrame(presenter)) {
+    if (!renderer.drawFrame(presenter, cubeGpu)) {
       std::cerr << "drawFrame failed\n";
       break;
     }

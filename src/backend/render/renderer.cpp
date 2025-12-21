@@ -1,8 +1,10 @@
 #include "renderer.hpp"
+
 #include "../../engine/camera/camera_ubo.hpp"
+#include "../../engine/mesh/vertex.hpp"
 #include "../presentation/vk_presenter.hpp"
-#include "../resources/vertex.hpp"
 #include "../resources/vk_buffer.hpp"
+#include "mesh_gpu.hpp"
 
 #include <array>
 #include <chrono>
@@ -14,6 +16,7 @@
 #include <glm/trigonometric.hpp>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
@@ -102,13 +105,6 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
     return false;
   }
 
-  // Create Geometry
-  if (!initTestGeometry()) {
-    std::cerr << "[Renderer] Failed to init geometry\n";
-    shutdown();
-    return false;
-  }
-
   // Allocate buffer per frame
   if (!m_commands.allocate(m_framesInFlight)) {
     std::cerr << "[Renderer] Failed to allocate command buffers\n";
@@ -129,9 +125,18 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
 
 // Destroy in reverse initialization order
 void Renderer::shutdown() noexcept {
+  if (m_device != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(m_device);
+  }
+
   // Commands-dependents
   m_frames.shutdown();
-  m_mesh.shutdown();
+
+  for (auto &mesh : m_meshes) {
+    mesh.shutdown();
+  }
+  m_meshes.clear();
+
   m_uploader.shutdown();
   m_camera.shutdown();
 
@@ -152,144 +157,54 @@ void Renderer::shutdown() noexcept {
   m_fragPath.clear();
 }
 
-bool Renderer::initTestGeometry() {
-  // Triangle
-  // const std::array<Vertex, 3> verts = {{
-  //     {{0.0f, -0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // yellow (bottom)
-  //     {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // magenta (top right)
-  //     {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // cyan (top left)
-  // }};
+MeshHandle Renderer::createMesh(const engine::Vertex *vertices,
+                                uint32_t vertexCount, const uint32_t *indices,
+                                uint32_t indexCount) {
+  MeshGpu gpu{};
 
-  // Square
-  // const std::array<Vertex, 4> verts = {{
-  //     {glm::vec3(-0.5F, -0.5F, 0.0F), glm::vec3(1.0F, 0.0F, 0.0F)},
-  //     {glm::vec3(0.5F, -0.5F, 0.0F), glm::vec3(0.0F, 1.0F, 0.0F)},
-  //     {glm::vec3(0.5F, 0.5F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F)},
-  //     {glm::vec3(-0.5F, 0.5F, 0.0F), glm::vec3(1.0F, 1.0F, 0.0F)},
-  // }};
-  //
-  // const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
-
-  // Cube
-  const std::array<Vertex, 24> verts = {{
-      // +Z (front)
-      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(1, 0, 0)},
-      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(1, 0, 0)},
-      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 0)},
-      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 0)},
-
-      // -Z (back)
-      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 0)},
-      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 0)},
-      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0, 1, 0)},
-      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(0, 1, 0)},
-
-      // -X (left)
-      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 0, 1)},
-      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0, 0, 1)},
-      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(0, 0, 1)},
-      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0, 0, 1)},
-
-      // +X (right)
-      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(1, 1, 0)},
-      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(1, 1, 0)},
-      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(1, 1, 0)},
-      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 1, 0)},
-
-      // +Y (top)
-      {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 1)},
-      {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1, 0, 1)},
-      {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(1, 0, 1)},
-      {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(1, 0, 1)},
-
-      // -Y (bottom)
-      {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 1)},
-      {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0, 1, 1)},
-      {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(0, 1, 1)},
-      {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0, 1, 1)},
-  }};
-
-  const std::array<uint32_t, 36> indices = {{// front
-                                             0, 1, 2, 2, 3, 0,
-                                             // back
-                                             4, 5, 6, 6, 7, 4,
-                                             // left
-                                             8, 9, 10, 10, 11, 8,
-                                             // right
-                                             12, 13, 14, 14, 15, 12,
-                                             // top
-                                             16, 17, 18, 18, 19, 16,
-                                             // bottom
-                                             20, 21, 22, 22, 23, 20}};
-
-  // Circle
-  // constexpr uint32_t SEGMENTS = 32;
-  // std::vector<Vertex> verts;
-  // std::vector<uint32_t> indices;
-  //
-  // verts.push_back({{0.0F, 0.0F, 0.0F}, {1, 1, 1}});
-  //
-  // for (uint32_t i = 0; i <= SEGMENTS; ++i) {
-  //   float t = (float)i / SEGMENTS;
-  //   float angle = t * 2.0F * std::numbers::pi_v<float>;
-  //
-  //   float x = std::cos(angle) * 0.5F;
-  //   float y = std::sin(angle) * 0.5F;
-  //
-  //   verts.push_back({{x, y, 0.0F}, {1, 0, 0}});
-  // }
-  //
-  // for (uint32_t i = 1; i <= SEGMENTS; ++i) {
-  //   indices.push_back(0);
-  //   indices.push_back(i);
-  //   indices.push_back(i + 1);
-  // }
-  //
-  // poincare disk in R^2
-  // const std::array<Vertex, 8> verts = {{
-  //     // Bottom arc (curving inward)
-  //     {{-0.6f, -0.4f, 0.0f}, {1, 0, 0}},
-  //     {{0.6f, -0.4f, 0.0f}, {1, 0, 0}},
-  //
-  //     // Right arc
-  //     {{0.8f, -0.1f, 0.0f}, {0, 1, 0}},
-  //     {{0.8f, 0.1f, 0.0f}, {0, 1, 0}},
-  //
-  //     // Top arc
-  //     {{0.6f, 0.4f, 0.0f}, {0, 0, 1}},
-  //     {{-0.6f, 0.4f, 0.0f}, {0, 0, 1}},
-  //
-  //     // Left arc
-  //     {{-0.8f, 0.1f, 0.0f}, {1, 1, 0}},
-  //     {{-0.8f, -0.1f, 0.0f}, {1, 1, 0}},
-  // }};
-  //
-  // const std::array<uint32_t, 18> indices = {
-  //     {0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 0, 0, 2, 4, 4, 6, 0}};
-  //
-  m_mesh.shutdown();
-
-  if (!m_uploader.uploadToDeviceLocalBuffer(
-          verts.data(), sizeof(Vertex) * verts.size(),
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_mesh.vertex)) {
-    return false;
+  if (vertices == nullptr || vertexCount == 0) {
+    std::cerr << "[Renderer] createMesh vertices or vertex count are 0\n";
+    return {};
   }
 
+  const VkDeviceSize vbSize =
+      VkDeviceSize(sizeof(engine::Vertex)) * vertexCount;
   if (!m_uploader.uploadToDeviceLocalBuffer(
-          indices.data(), sizeof(uint32_t) * indices.size(),
-          VK_BUFFER_USAGE_INDEX_BUFFER_BIT, m_mesh.index)) {
-    return false;
+          vertices, vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, gpu.vertex)) {
+    std::cerr << "[Renderer] vertex upload failed\n";
+    return {};
   }
 
-  m_mesh.vertexCount = static_cast<uint32_t>(verts.size());
-  m_mesh.indexCount = static_cast<uint32_t>(indices.size());
-  m_mesh.indexType = VK_INDEX_TYPE_UINT32;
+  gpu.vertexCount = vertexCount;
 
-  return true;
+  if (indices != nullptr && indexCount > 0) {
+    const VkDeviceSize ibSize = VkDeviceSize(sizeof(uint32_t)) * indexCount;
+    if (!m_uploader.uploadToDeviceLocalBuffer(
+            indices, ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, gpu.index)) {
+      std::cerr << "[Renderer] indice upload failed\n";
+      gpu.shutdown();
+      return {};
+    }
+
+    gpu.indexCount = indexCount;
+    // TODO: make dynamic
+    gpu.indexType = VK_INDEX_TYPE_UINT32;
+  }
+
+  m_meshes.push_back(std::move(gpu));
+  return MeshHandle{static_cast<uint32_t>(m_meshes.size() - 1)};
+}
+
+const MeshGpu *Renderer::mesh(MeshHandle handle) const {
+  if (handle.id >= m_meshes.size()) {
+    return nullptr;
+  }
+
+  return &m_meshes[handle.id];
 }
 
 void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
-                           VkExtent2D extent) {
+                           VkExtent2D extent, const MeshGpu &mesh) {
   VkCommandBufferBeginInfo beginInfo{
       VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
   vkBeginCommandBuffer(cmd, &beginInfo);
@@ -338,22 +253,23 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
   VkDeviceSize vertBufOffset = 0;
-  VkBuffer vertBuf = m_mesh.vertex.handle();
+  VkDeviceSize indexBufOffset = 0;
+  VkBuffer vertBuf = mesh.vertex.handle();
   vkCmdBindVertexBuffers(cmd, 0, 1, &vertBuf, &vertBufOffset);
 
-  // TODO: use m_mesh.indexed to conditionally vkCmdDraw if not indexed
-  // vkCmdDraw(cmd, m_vertexCount, 1, 0, 0);
-
-  VkDeviceSize indexBufOffset = 0;
-  vkCmdBindIndexBuffer(cmd, m_mesh.index.handle(), indexBufOffset,
-                       m_mesh.indexType);
-  vkCmdDrawIndexed(cmd, m_mesh.indexCount, 1, 0, 0, 0);
+  if (mesh.indexed()) {
+    vkCmdBindIndexBuffer(cmd, mesh.index.handle(), indexBufOffset,
+                         mesh.indexType);
+    vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+  } else {
+    vkCmdDraw(cmd, mesh.vertexCount, 1, 0, 0);
+  }
 
   vkCmdEndRenderPass(cmd);
   vkEndCommandBuffer(cmd);
 }
 
-bool Renderer::drawFrame(VkPresenter &presenter) {
+bool Renderer::drawFrame(VkPresenter &presenter, MeshHandle mesh) {
   if (m_device == VK_NULL_HANDLE) {
     return false;
   }
@@ -386,7 +302,8 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
   vkResetCommandBuffer(cmd, 0);
 
-  recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent());
+  recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent(),
+              m_meshes[mesh.id]);
 
   auto pst = m_frames.submitAndPresent(m_graphicsQueue, presenter.swapchain(),
                                        imageIndex, cmd);

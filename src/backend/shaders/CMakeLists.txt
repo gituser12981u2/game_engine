@@ -1,5 +1,5 @@
 add_library(engine_shaders STATIC
-  vulkan_shader.cpp
+  vk_shader.cpp
 )
 
 target_include_directories(engine_shaders

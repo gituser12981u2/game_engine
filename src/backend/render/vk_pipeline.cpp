@@ -1,10 +1,10 @@
 #include "vk_pipeline.hpp"
-#include "../resources/vertex.hpp"
-#include "../shaders/vulkan_shader.hpp"
-#include "glm/ext/matrix_float4x4.hpp"
+#include "../resources/vk_vertex_layout.hpp"
+#include "../shaders/vk_shader.hpp"
 
 #include <array>
 #include <cstdint>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <iostream>
 #include <string>
 #include <vulkan/vulkan_core.h>
@@ -114,8 +114,9 @@ bool VkGraphicsPipeline::createPipelineLayout() {
 bool VkGraphicsPipeline::createGraphicsPipeline(
     VkRenderPass renderPass, const VkPipelineShaderStageCreateInfo *stages,
     uint32_t stageCount) {
-  VkVertexInputBindingDescription binding = Vertex::bindingDescription();
-  auto attributes = Vertex::attributeDescriptions();
+  VkVertexInputBindingDescription binding =
+      vk_vertex_layout::bindingDescription();
+  auto attributes = vk_vertex_layout::attributeDescriptions();
 
   VkPipelineVertexInputStateCreateInfo vertexInput{};
   vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

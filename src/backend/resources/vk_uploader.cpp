@@ -36,9 +36,11 @@ bool VkUploader::uploadToDeviceLocalBuffer(const void *data, VkDeviceSize size,
 
   if (data == nullptr || size == 0) {
     std::cerr << "[Uploader] Invalid data or size\n";
+    return false;
   }
 
   // Staging buffer: CPU-visible
+  // TODO: persist the staging buffer instead of remaking it per upload
   VkBufferObj staging{};
   if (!staging.init(m_physicalDevice, m_device, size,
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
