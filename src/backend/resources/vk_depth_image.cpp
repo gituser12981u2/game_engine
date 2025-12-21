@@ -74,8 +74,8 @@ bool VkDepthImage::init(VkPhysicalDevice physicalDevice, VkDevice device,
 
   VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.extent = VkExtent3D{extent.width, extent.height, .depth = 1};
-  imageInfo.mipLevels = 1; // Todo: add mipmap
+  imageInfo.extent = VkExtent3D{extent.width, extent.height, 1};
+  imageInfo.mipLevels = 1; // Todo: add mipmap //ur mums a mipmap
   imageInfo.arrayLayers = 1;
   imageInfo.format = m_format;
   imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
