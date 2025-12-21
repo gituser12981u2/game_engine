@@ -1,13 +1,22 @@
 #include "renderer.hpp"
+
+#include "../../engine/camera/camera_ubo.hpp"
+#include "../../engine/mesh/vertex.hpp"
 #include "../presentation/vk_presenter.hpp"
 #include "../resources/vk_buffer.hpp"
-#include "vertex.hpp"
+#include "mesh_gpu.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/trigonometric.hpp>
 #include <iostream>
-#include <numbers>
 #include <string>
+#include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
@@ -43,8 +52,14 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
   m_vertPath = vertSpvPath;
   m_fragPath = fragSpvPath;
 
+  if (!m_depth.init(m_physicalDevice, device, presenter.extent())) {
+    std::cerr << "[Renderer] Failed to create depth buffer\n";
+    shutdown();
+    return false;
+  }
+
   // Create render pass
-  if (!m_renderPass.init(m_device, presenter.imageFormat())) {
+  if (!m_renderPass.init(m_device, presenter.imageFormat(), m_depth.format())) {
     std::cerr << "[Renderer] Failed to create render pass\n";
     shutdown();
     return false;
@@ -60,14 +75,25 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
 
   // Create frame buffers
   if (!m_framebuffers.init(m_device, m_renderPass.handle(),
-                           presenter.imageViews(), presenter.extent())) {
+                           presenter.imageViews(), m_depth.view(),
+                           presenter.extent())) {
     std::cerr << "[Renderer] Failed to create framebuffers\n";
     shutdown();
     return false;
   }
 
+  // Create command pool
   if (!m_commands.init(m_device, m_graphicsQueueFamily)) {
     std::cerr << "[Renderer] Failed to create the command pool\n";
+    shutdown();
+    return false;
+  }
+
+  // Create camera
+  if (!m_camera.init(m_physicalDevice, m_device,
+                     m_pipeline.descriptorSetLayout(), m_framesInFlight,
+                     sizeof(CameraUBO))) {
+    std::cerr << "[Renderer] Failed to init camera UBO\n";
     shutdown();
     return false;
   }
@@ -75,13 +101,6 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
   if (!m_uploader.init(m_physicalDevice, m_device, m_graphicsQueue,
                        &m_commands)) {
     std::cerr << "[Renderer] Failed to init uploader\n";
-    shutdown();
-    return false;
-  }
-
-  // Create Geometry
-  if (!initTestGeometry()) {
-    std::cerr << "[Renderer] Failed to init geometry\n";
     shutdown();
     return false;
   }
@@ -104,102 +123,30 @@ bool Renderer::init(VkPhysicalDevice physicalDevice, VkDevice device,
   return true;
 }
 
-bool Renderer::initTestGeometry() {
-  // Triangle
-  // const std::array<Vertex, 3> verts = {{
-  //     {{0.0f, -0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // yellow (bottom)
-  //     {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // magenta (top right)
-  //     {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // cyan (top left)
-  // }};
-
-  // Square
-  const std::array<Vertex, 4> verts = {{
-      {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // bottom-left
-      {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // bottom-right
-      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},   // top-right
-      {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // top-left
-  }};
-
-  const std::array<uint32_t, 6> indices = {{0, 1, 2, 2, 3, 0}};
-
-  // Circle
-  // constexpr uint32_t SEGMENTS = 32;
-  // std::vector<Vertex> verts;
-  // std::vector<uint32_t> indices;
-  //
-  // verts.push_back({{0.0F, 0.0F, 0.0F}, {1, 1, 1}});
-  //
-  // for (uint32_t i = 0; i <= SEGMENTS; ++i) {
-  //   float t = (float)i / SEGMENTS;
-  //   float angle = t * 2.0F * std::numbers::pi_v<float>;
-  //
-  //   float x = std::cos(angle) * 0.5F;
-  //   float y = std::sin(angle) * 0.5F;
-  //
-  //   verts.push_back({{x, y, 0.0F}, {1, 0, 0}});
-  // }
-  //
-  // for (uint32_t i = 1; i <= SEGMENTS; ++i) {
-  //   indices.push_back(0);
-  //   indices.push_back(i);
-  //   indices.push_back(i + 1);
-  // }
-  //
-  // poincare disk in R^2
-  // const std::array<Vertex, 8> verts = {{
-  //     // Bottom arc (curving inward)
-  //     {{-0.6f, -0.4f, 0.0f}, {1, 0, 0}},
-  //     {{0.6f, -0.4f, 0.0f}, {1, 0, 0}},
-  //
-  //     // Right arc
-  //     {{0.8f, -0.1f, 0.0f}, {0, 1, 0}},
-  //     {{0.8f, 0.1f, 0.0f}, {0, 1, 0}},
-  //
-  //     // Top arc
-  //     {{0.6f, 0.4f, 0.0f}, {0, 0, 1}},
-  //     {{-0.6f, 0.4f, 0.0f}, {0, 0, 1}},
-  //
-  //     // Left arc
-  //     {{-0.8f, 0.1f, 0.0f}, {1, 1, 0}},
-  //     {{-0.8f, -0.1f, 0.0f}, {1, 1, 0}},
-  // }};
-  //
-  // const std::array<uint32_t, 18> indices = {
-  //     {0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 0, 0, 2, 4, 4, 6, 0}};
-  //
-  m_mesh.shutdown();
-
-  if (!m_uploader.uploadToDeviceLocalBuffer(
-          verts.data(), sizeof(Vertex) * verts.size(),
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, m_mesh.vertex)) {
-    return false;
-  }
-
-  if (!m_uploader.uploadToDeviceLocalBuffer(
-          indices.data(), sizeof(uint32_t) * indices.size(),
-          VK_BUFFER_USAGE_INDEX_BUFFER_BIT, m_mesh.index)) {
-    return false;
-  }
-
-  m_mesh.vertexCount = static_cast<uint32_t>(verts.size());
-  m_mesh.indexCount = static_cast<uint32_t>(indices.size());
-  m_mesh.indexType = VK_INDEX_TYPE_UINT32;
-
-  return true;
-}
-
 // Destroy in reverse initialization order
 void Renderer::shutdown() noexcept {
-  // Frame manager
+  if (m_device != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(m_device);
+  }
+
+  // Commands-dependents
   m_frames.shutdown();
-  m_mesh.shutdown();
+
+  for (auto &mesh : m_meshes) {
+    mesh.shutdown();
+  }
+  m_meshes.clear();
+
   m_uploader.shutdown();
+  m_camera.shutdown();
+
   m_commands.shutdown();
 
   // Swapchain-dependents
   m_framebuffers.shutdown();
   m_pipeline.shutdown();
   m_renderPass.shutdown();
+  m_depth.shutdown();
 
   m_device = VK_NULL_HANDLE;
   m_graphicsQueue = VK_NULL_HANDLE;
@@ -210,26 +157,85 @@ void Renderer::shutdown() noexcept {
   m_fragPath.clear();
 }
 
+MeshHandle Renderer::createMesh(const engine::Vertex *vertices,
+                                uint32_t vertexCount, const uint32_t *indices,
+                                uint32_t indexCount) {
+  MeshGpu gpu{};
+
+  if (vertices == nullptr || vertexCount == 0) {
+    std::cerr << "[Renderer] createMesh vertices or vertex count are 0\n";
+    return {};
+  }
+
+  const VkDeviceSize vbSize =
+      VkDeviceSize(sizeof(engine::Vertex)) * vertexCount;
+  if (!m_uploader.uploadToDeviceLocalBuffer(
+          vertices, vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, gpu.vertex)) {
+    std::cerr << "[Renderer] vertex upload failed\n";
+    return {};
+  }
+
+  gpu.vertexCount = vertexCount;
+
+  if (indices != nullptr && indexCount > 0) {
+    const VkDeviceSize ibSize = VkDeviceSize(sizeof(uint32_t)) * indexCount;
+    if (!m_uploader.uploadToDeviceLocalBuffer(
+            indices, ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, gpu.index)) {
+      std::cerr << "[Renderer] indice upload failed\n";
+      gpu.shutdown();
+      return {};
+    }
+
+    gpu.indexCount = indexCount;
+    // TODO: make dynamic
+    gpu.indexType = VK_INDEX_TYPE_UINT32;
+  }
+
+  m_meshes.push_back(std::move(gpu));
+  return MeshHandle{static_cast<uint32_t>(m_meshes.size() - 1)};
+}
+
+const MeshGpu *Renderer::mesh(MeshHandle handle) const {
+  if (handle.id >= m_meshes.size()) {
+    return nullptr;
+  }
+
+  return &m_meshes[handle.id];
+}
+
 void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
-                           VkExtent2D extent) {
+                           VkExtent2D extent, const MeshGpu &mesh) {
   VkCommandBufferBeginInfo beginInfo{
       VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
   vkBeginCommandBuffer(cmd, &beginInfo);
 
-  VkClearValue clear{};
-  clear.color = {{0.05F, 0.05F, 0.08F, 1.0F}};
+  std::array<VkClearValue, 2> clears{};
+  clears[0].color = {{0.05F, 0.05F, 0.08F, 1.0F}};
+  clears[1].depthStencil =
+      VkClearDepthStencilValue{.depth = 1.0F, .stencil = 0};
 
   VkRenderPassBeginInfo rpBegin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
   rpBegin.renderPass = m_renderPass.handle();
   rpBegin.framebuffer = fb;
   rpBegin.renderArea.offset = VkOffset2D{0, 0};
   rpBegin.renderArea.extent = extent;
-  rpBegin.clearValueCount = 1;
-  rpBegin.pClearValues = &clear;
+  rpBegin.clearValueCount = static_cast<uint32_t>(clears.size());
+  rpBegin.pClearValues = clears.data();
 
   vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     m_pipeline.pipeline());
+
+  m_camera.bind(cmd, m_pipeline.layout(), 0, m_frames.currentFrameIndex());
+
+  // Push constant (model matrix)
+  glm::mat4 model = glm::mat4(1.0F);
+
+  // TODO REMOVE
+  model = glm::rotate(model, m_timeSeconds, glm::vec3(0.0F, 0.0F, 1.0F));
+
+  vkCmdPushConstants(cmd, m_pipeline.layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(glm::mat4), &model);
 
   // Viewport / scissor
   VkViewport viewport{};
@@ -247,25 +253,32 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
   VkDeviceSize vertBufOffset = 0;
-  VkBuffer vertBuf = m_mesh.vertex.handle();
+  VkDeviceSize indexBufOffset = 0;
+  VkBuffer vertBuf = mesh.vertex.handle();
   vkCmdBindVertexBuffers(cmd, 0, 1, &vertBuf, &vertBufOffset);
 
-  // TODO: use m_mesh.indexed to conditionally vkCmdDraw if not indexed
-  // vkCmdDraw(cmd, m_vertexCount, 1, 0, 0);
-
-  VkDeviceSize indexBufOffset = 0;
-  vkCmdBindIndexBuffer(cmd, m_mesh.index.handle(), indexBufOffset,
-                       m_mesh.indexType);
-  vkCmdDrawIndexed(cmd, m_mesh.indexCount, 1, 0, 0, 0);
+  if (mesh.indexed()) {
+    vkCmdBindIndexBuffer(cmd, mesh.index.handle(), indexBufOffset,
+                         mesh.indexType);
+    vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+  } else {
+    vkCmdDraw(cmd, mesh.vertexCount, 1, 0, 0);
+  }
 
   vkCmdEndRenderPass(cmd);
   vkEndCommandBuffer(cmd);
 }
 
-bool Renderer::drawFrame(VkPresenter &presenter) {
+bool Renderer::drawFrame(VkPresenter &presenter, MeshHandle mesh) {
   if (m_device == VK_NULL_HANDLE) {
     return false;
   }
+
+  // TODO REMOVE
+  static auto start = std::chrono::steady_clock::now();
+  auto now = std::chrono::steady_clock::now();
+  std::chrono::duration<float> dt = now - start;
+  m_timeSeconds = dt.count();
 
   using FrameStatus = VkFrameManager::FrameStatus;
 
@@ -281,10 +294,16 @@ bool Renderer::drawFrame(VkPresenter &presenter) {
   }
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
+
+  if (!m_camera.update(frameIndex, &m_cameraUbo, sizeof(m_cameraUbo))) {
+    std::cerr << "[Renderer] Failed to update camera UBO\n";
+  }
+
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
   vkResetCommandBuffer(cmd, 0);
 
-  recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent());
+  recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent(),
+              m_meshes[mesh.id]);
 
   auto pst = m_frames.submitAndPresent(m_graphicsQueue, presenter.swapchain(),
                                        imageIndex, cmd);
@@ -306,6 +325,7 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   }
 
   const VkFormat oldFormat = presenter.imageFormat();
+  const VkExtent2D oldExtent = presenter.extent();
 
   vkDeviceWaitIdle(m_device);
 
@@ -319,11 +339,26 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   const VkFormat newFormat = presenter.imageFormat();
   const bool formatChanged = (newFormat != oldFormat);
 
+  // Keep depth unless extent changes
+  const VkExtent2D newExtent = presenter.extent();
+  const bool extentChanged = oldExtent.width != newExtent.width ||
+                             oldExtent.height != newExtent.height;
+
+  if (extentChanged) {
+    m_depth.shutdown();
+
+    // Recreate depth
+    if (!m_depth.init(m_physicalDevice, m_device, presenter.extent())) {
+      return false;
+    }
+  }
+
   if (formatChanged) {
     m_pipeline.shutdown();
     m_renderPass.shutdown();
 
-    if (!m_renderPass.init(m_device, presenter.imageFormat())) {
+    if (!m_renderPass.init(m_device, presenter.imageFormat(),
+                           m_depth.format())) {
       return false;
     }
 
@@ -335,7 +370,8 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
 
   // Recreate framebuffers
   if (!m_framebuffers.init(m_device, m_renderPass.handle(),
-                           presenter.imageViews(), presenter.extent())) {
+                           presenter.imageViews(), m_depth.view(),
+                           presenter.extent())) {
     return false;
   }
 

@@ -1,15 +1,15 @@
-add_library(engine_shader STATIC
-  vulkan_shader.cpp
+add_library(engine_shaders STATIC
+  vk_shader.cpp
 )
 
-target_include_directories(engine_shader
+target_include_directories(engine_shaders
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR} 
 )
 
-target_link_libraries(engine_shader
+target_link_libraries(engine_shaders
   PUBLIC
     Vulkan::Vulkan
 )
 
-add_library(engine::shader ALIAS engine_shader)
+add_library(engine::shaders ALIAS engine_shaders)
