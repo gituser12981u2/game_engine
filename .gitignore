@@ -1,6 +1,9 @@
 .DS_Store
 build/
+build-analyze/
 .cache/
+compile_commands.json
 
 shaders/*
 todo.md
+
