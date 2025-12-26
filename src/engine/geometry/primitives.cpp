@@ -1,196 +1,131 @@
 #include "primitives.hpp"
+#include "engine/geometry/mesh_builder.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <glm/ext/vector_float2.hpp>
+#include <iostream>
 #include <numbers>
+#include <utility>
 
 namespace engine::primitives {
 
-// TODO: update all to use UV's
-MeshData triangle() {
-  MeshData m;
-  m.vertices = {
-      engine::Vertex{.pos = glm::vec3{0.0F, -0.5F, 0.0F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, 0.0F},
-                     .color = glm::vec3{1.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, 0.0F},
-                     .color = glm::vec3{0.0F, 1.0F, 1.0F}},
-  };
+MeshData triangle(float size) {
+  engine::MeshBuilder builder;
+  builder.reserve(3, 0);
 
-  // non-indexed
-  return m;
+  const float h = size * 0.5F;
+
+  builder.vertices.push_back(engine::Vertex{
+      .pos = {0.0F, -h, 0.0F},
+      .color = {1.0F, 1.0F, 0.0F},
+      .uv = {0.5F, 0.0F},
+  });
+
+  builder.vertices.push_back(engine::Vertex{
+      .pos = {+h, +h, 0.0F},
+      .color = {1.0F, 0.0F, 1.0F},
+      .uv = {1.0F, 1.0F},
+  });
+
+  builder.vertices.push_back(engine::Vertex{
+      .pos = {-h, +h, 0.0F},
+      .color = {0.0F, 1.0F, 1.0F},
+      .uv = {0.0F, 1.0F},
+  });
+
+  return std::move(builder).build();
 }
 
-MeshData square() {
-  MeshData m;
-  m.vertices = {
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, 0.0F},
-                     .color = glm::vec3{1.0F, 0.0F, 0.0F},
-                     .uv = glm::vec2{0.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, 0.0F},
-                     .color = glm::vec3{0.0F, 1.0F, 0.0F},
-                     .uv = glm::vec2{1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, 0.0F},
-                     .color = glm::vec3{0.0F, 0.0F, 1.0F},
-                     .uv = glm::vec2{1.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, 0.0F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F},
-                     .uv = glm::vec2{0.0F, 1.0F}},
-  };
+MeshData square(float size) {
+  engine::MeshBuilder builder;
+  builder.reserve(4, 6);
 
-  m.indices = {0U, 1U, 2U, 2U, 3U, 0U};
+  const float h = size * 0.5F;
 
-  return m;
+  builder.addQuad({-h, -h, 0.0F}, {+h, -h, 0.0F}, {+h, +h, 0.0F},
+                  {-h, +h, 0.0F}, {1.0F, 1.0F, 1.0F});
+
+  return std::move(builder).build();
 }
 
-MeshData cube() {
-  MeshData m;
-  m.vertices = {
-      // +Z (front)
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 0.0F}},
+MeshData cube(float size) {
+  engine::MeshBuilder builder;
+  builder.reserve(24, 36);
 
-      // -Z (back)
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 0.0F}},
+  const float h = size * 0.5F;
 
-      // -X (left)
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{0.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{0.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 0.0F, 1.0F}},
+  // +Z (front)
+  builder.addQuad({-h, -h, +h}, {+h, -h, +h}, {+h, +h, +h}, {-h, +h, +h},
+                  {1, 0, 0});
+  // -Z (back)
+  builder.addQuad({+h, -h, -h}, {-h, -h, -h}, {-h, +h, -h}, {+h, +h, -h},
+                  {0, 1, 0});
+  // -X (left)
+  builder.addQuad({-h, -h, -h}, {-h, -h, +h}, {-h, +h, +h}, {-h, +h, -h},
+                  {0, 0, 1});
+  // +X (right)
+  builder.addQuad({+h, -h, +h}, {+h, -h, -h}, {+h, +h, -h}, {+h, +h, +h},
+                  {1, 1, 0});
+  // +Y (top)
+  builder.addQuad({-h, +h, +h}, {+h, +h, +h}, {+h, +h, -h}, {-h, +h, -h},
+                  {1, 0, 1});
+  // -Y (bottom)
+  builder.addQuad({-h, -h, -h}, {+h, -h, -h}, {+h, -h, +h}, {-h, -h, +h},
+                  {0, 1, 1});
 
-      // +X (right)
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 1.0F, 0.0F}},
-
-      // +Y (top)
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, 0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, 0.5F, -0.5F},
-                     .color = glm::vec3{1.0F, 0.0F, 1.0F}},
-
-      // -Y (bottom)
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, -0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 1.0F}},
-      engine::Vertex{.pos = glm::vec3{-0.5F, -0.5F, 0.5F},
-                     .color = glm::vec3{0.0F, 1.0F, 1.0F}},
-  };
-
-  m.indices = {
-      // front
-      0U,
-      1U,
-      2U,
-      2U,
-      3U,
-      0U,
-      // back
-      4U,
-      5U,
-      6U,
-      6U,
-      7U,
-      4U,
-      // left
-      8U,
-      9U,
-      10U,
-      10U,
-      11U,
-      8U,
-      // right
-      12U,
-      13U,
-      14U,
-      14U,
-      15U,
-      12U,
-      // top
-      16U,
-      17U,
-      18U,
-      18U,
-      19U,
-      16U,
-      // bottom
-      20U,
-      21U,
-      22U,
-      22U,
-      23U,
-      20U,
-  };
-
-  return m;
+  return std::move(builder).build();
 }
 
-MeshData circle(uint32_t segments) {
-  MeshData m;
+MeshData circle(uint32_t segments, float radius) {
+
+  if (radius == 0) {
+    std::cerr << "[Primitives] circle cannot had radius of 0\n";
+    return {};
+  }
+
+  engine::MeshBuilder builder;
 
   segments = std::max(segments, 3U);
 
-  m.vertices.reserve(static_cast<size_t>(segments) + 2U);
-  m.indices.reserve(static_cast<size_t>(segments) * 3U);
+  builder.reserve(static_cast<size_t>(segments) + 2U,
+                  static_cast<size_t>(segments) * 3U);
 
   // center
-  m.vertices.push_back(engine::Vertex{
+  builder.vertices.push_back(engine::Vertex{
       .pos = glm::vec3{0.0F, 0.0F, 0.0F},
       .color = glm::vec3{1.0F, 1.0F, 1.0F},
+      .uv = {0.5F, 0.5F},
   });
 
   // ring
-  for (uint32_t i = 0; i <= segments; ++i) {
+  for (std::uint32_t i = 0; i <= segments; ++i) {
     const float t = static_cast<float>(i) / static_cast<float>(segments);
     const float a = t * 2.0F * std::numbers::pi_v<float>;
-    const float x = std::cos(a) * 0.5F;
-    const float y = std::sin(a) * 0.5F;
 
-    m.vertices.push_back(engine::Vertex{
+    const float x = std::cos(a) * radius;
+    const float y = std::sin(a) * radius;
+
+    // map [-radius, radius] -> [0, 1]
+    const glm::vec2 uv{(x / (2.0F * radius)) + 0.5F,
+                       (y / (2.0F * radius)) + 0.5F};
+
+    builder.vertices.push_back(engine::Vertex{
         .pos = glm::vec3{x, y, 0.0F},
         .color = glm::vec3{1.0F, 0.0F, 0.0F},
+        .uv = uv,
     });
   }
 
-  for (uint32_t i = 1; i <= segments; ++i) {
-    m.indices.push_back(0U);
-    m.indices.push_back(i);
-    m.indices.push_back(i + 1U);
+  // indices
+  for (std::uint32_t i = 1; i <= segments; ++i) {
+    builder.indices.push_back(0U);
+    builder.indices.push_back(i);
+    builder.indices.push_back(i + 1U);
   }
 
-  return m;
+  return std::move(builder).build();
 }
 
 MeshData poincareDisk() {

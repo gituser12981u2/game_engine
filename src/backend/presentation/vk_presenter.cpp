@@ -1,13 +1,13 @@
 #include "vk_presenter.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "platform/window/glfw_window.hpp"
 
-#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkPresenter::init(VkBackendCtx &ctx, GLFWwindow *window, uint32_t width,
+bool VkPresenter::init(VkBackendCtx &ctx, GlfwWindow *window, uint32_t width,
                        uint32_t height) {
   if (window == nullptr) {
     std::cerr << "[Presenter] window is null\n";
@@ -24,14 +24,9 @@ bool VkPresenter::init(VkBackendCtx &ctx, GLFWwindow *window, uint32_t width,
   m_ctx = &ctx;
   m_window = window;
 
-  VkResult surfRes =
-      glfwCreateWindowSurface(m_ctx->instance(), window, nullptr, &m_surface);
-  if (surfRes != VK_SUCCESS) {
-    std::cerr << "[Presenter] glfwCreateWindowSurface failed: " << surfRes
-              << "\n";
-    m_surface = VK_NULL_HANDLE;
-    m_ctx = nullptr;
-    m_window = nullptr;
+  if (!m_window->createVulkanSurface(m_ctx->instance(), m_surface)) {
+    std::cerr << "[Presenter] create surface failed\n";
+    shutdown();
     return false;
   }
 
@@ -84,17 +79,16 @@ bool VkPresenter::recreateSwapchain() {
     return false;
   }
 
-  int fbWidth = 0;
-  int fbHeight = 0;
-  glfwGetFramebufferSize(m_window, &fbWidth, &fbHeight);
+  uint32_t fbWidth = 0;
+  uint32_t fbHeight = 0;
+  m_window->framebufferSize(fbWidth, fbHeight);
 
   // Skip recreate while minimized
   if (fbWidth == 0 || fbHeight == 0) {
     return false;
   }
 
-  if (!m_swapchain.init(*m_ctx, m_surface, static_cast<uint32_t>(fbWidth),
-                        static_cast<uint32_t>(fbHeight))) {
+  if (!m_swapchain.init(*m_ctx, m_surface, fbWidth, fbHeight)) {
     return false;
   }
 

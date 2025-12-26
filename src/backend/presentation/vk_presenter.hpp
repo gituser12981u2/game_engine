@@ -1,14 +1,12 @@
 #pragma once
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "platform/window/glfw_window.hpp"
 #include "vk_swapchain.hpp"
 
 #include <cstdint>
 #include <utility>
 #include <vulkan/vulkan_core.h>
-
-// TODO: use GlfwWindow wrapper and get rid of GLFW dependency
-struct GLFWwindow;
 
 // Owns VulkanSwapchain and VkSurfaceKHR
 class VkPresenter {
@@ -35,7 +33,7 @@ public:
     return *this;
   }
 
-  bool init(VkBackendCtx &ctx, GLFWwindow *window, uint32_t width,
+  bool init(VkBackendCtx &ctx, GlfwWindow *window, uint32_t width,
             uint32_t height);
   void shutdown() noexcept;
 
@@ -65,7 +63,7 @@ public:
 
 private:
   VkBackendCtx *m_ctx = nullptr;  // non-owning
-  GLFWwindow *m_window = nullptr; // non-owning
+  GlfwWindow *m_window = nullptr; // non-owning
 
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSwapchain m_swapchain;

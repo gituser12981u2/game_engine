@@ -168,7 +168,7 @@ bool VkSwapchain::init(VkBackendCtx &ctx, VkSurfaceKHR surface, uint32_t width,
       querySwapChainSupport(physicalDevice, m_surface);
 
   if (support.formats.empty() || support.presentModes.empty()) {
-    std::cerr << "Swapchain support incomplete\n";
+    std::cerr << "[Swapchain] support incomplete\n";
     return false;
   }
 
@@ -253,7 +253,6 @@ void VkSwapchain::shutdown(VkDevice device) noexcept {
     destroySwapchainImageViews(device);
 
     if (m_swapChain != VK_NULL_HANDLE) {
-      std::cout << "[Swapchain] Destroying swapchain\n";
       vkDestroySwapchainKHR(device, m_swapChain, nullptr);
     }
   } else {
@@ -272,19 +271,19 @@ bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
   destroySwapchainImageViews(device);
 
   if (device == VK_NULL_HANDLE) {
-    std::cerr << "[ImageViews] Device is null\n";
+    std::cerr << "[Swapchain] Device is null\n";
     return false;
   }
 
   const auto &images = swapchainImages();
   if (images.empty()) {
-    std::cerr << "[ImageViews] Swapchain images are empty\n";
+    std::cerr << "[Swapchain] Swapchain images are empty\n";
     return false;
   }
 
   VkFormat format = swapchainImageFormat();
   if (format == VK_FORMAT_UNDEFINED) {
-    std::cerr << "[ImageViews] Swapchain format undefined\n";
+    std::cerr << "[Swapchain] Swapchain format undefined\n";
     return false;
   }
 

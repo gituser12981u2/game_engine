@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <utility>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
@@ -28,7 +29,7 @@ public:
     return *this;
   }
 
-  enum class MemUsage { GpuOnly, CpuToGpu, GpuToCpu };
+  enum class MemUsage : std::uint8_t { GpuOnly, CpuToGpu, GpuToCpu };
 
   bool init(VmaAllocator allocator, VkDeviceSize size, VkBufferUsageFlags usage,
             MemUsage memUsage, bool mapped = false);

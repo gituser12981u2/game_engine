@@ -9,7 +9,8 @@ target_include_directories(engine_window
 
 target_link_libraries(engine_window
     PUBLIC
-        glfw
+      glfw
+      Vulkan::Vulkan
 )
 
 add_library(engine::window ALIAS engine_window)

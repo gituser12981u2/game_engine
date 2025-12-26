@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <iostream>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
 bool GlfwWindow::init(uint32_t width, uint32_t height, const char *title) {
   shutdown();
@@ -69,6 +70,26 @@ void GlfwWindow::framebufferSize(uint32_t &outWidth,
 
   outWidth = fbWidth > 0 ? static_cast<uint32_t>(fbWidth) : 1U;
   outHeight = fbHeight > 0 ? static_cast<uint32_t>(fbHeight) : 1U;
+}
+
+bool GlfwWindow::createVulkanSurface(VkInstance instance,
+                                     VkSurfaceKHR &outSurface) const {
+  outSurface = VK_NULL_HANDLE;
+
+  if (m_window == nullptr || instance == VK_NULL_HANDLE) {
+    std::cerr << "[Window] createVulkanSurface invalid args\n";
+    return false;
+  }
+
+  const VkResult res =
+      glfwCreateWindowSurface(instance, m_window, nullptr, &outSurface);
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Window] glfwCreateWindowSurface failed: " << res << "\n";
+    outSurface = VK_NULL_HANDLE;
+    return false;
+  }
+
+  return true;
 }
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)

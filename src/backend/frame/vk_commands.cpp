@@ -53,7 +53,6 @@ bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
 
   m_buffers.resize(count, VK_NULL_HANDLE);
 
-  // TODO: maybe spin off into a cmd buf allocate info function in resources?
   VkCommandBufferAllocateInfo allocInfo{};
   allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   allocInfo.commandPool = m_pool;

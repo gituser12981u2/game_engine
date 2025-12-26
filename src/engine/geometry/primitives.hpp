@@ -4,10 +4,10 @@
 
 namespace engine::primitives {
 
-MeshData triangle();
-MeshData square();
-MeshData cube();
-MeshData circle(uint32_t segments);
+MeshData triangle(float size = 1.0F);
+MeshData square(float size = 1.0F);
+MeshData cube(float size = 1.0F);
+MeshData circle(uint32_t segments, float radius = 0.5F);
 MeshData poincareDisk();
 
 } // namespace engine::primitives

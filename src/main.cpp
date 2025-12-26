@@ -58,7 +58,7 @@ int main() {
   uint32_t fbHeight = 0;
 
   window.framebufferSize(fbWidth, fbHeight);
-  if (!presenter.init(ctx, window.handle(), fbWidth, fbHeight)) {
+  if (!presenter.init(ctx, &window, fbWidth, fbHeight)) {
     std::cerr << "Failed to initialize presenter\n";
     cleanup();
     return 1;
@@ -74,17 +74,17 @@ int main() {
   }
 
   Camera camera;
-  CameraController controller(window.handle(), &camera);
+  CameraController controller(window, &camera);
   controller.enableCursorCapture(true);
 
   double lastTime = glfwGetTime();
 
-  auto cubeCpu = engine::primitives::square();
+  auto cubeCpu = engine::primitives::cube();
   auto cubeGpu = renderer.createMesh(
       cubeCpu.vertices.data(), (uint32_t)cubeCpu.vertices.size(),
       cubeCpu.indices.data(), (uint32_t)cubeCpu.indices.size());
 
-  auto texture = renderer.createTextureFromFile("assets/texture.jpg", true);
+  auto texture = renderer.createTextureFromFile("assets/terry.jpg", true);
   uint32_t material = renderer.createMaterialFromTexture(texture);
   renderer.setActiveMaterial(material);
 

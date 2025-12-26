@@ -11,7 +11,6 @@ static VmaMemoryUsage toVmaUsage(VkBufferObj::MemUsage usage) {
   case VkBufferObj::MemUsage::GpuOnly:
     return VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
   case VkBufferObj::MemUsage::CpuToGpu:
-    return VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
   case VkBufferObj::MemUsage::GpuToCpu:
     return VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
   }
@@ -78,8 +77,8 @@ bool VkBufferObj::upload(const void *data, VkDeviceSize size,
 
   void *mapped = nullptr;
   VkResult res = vmaMapMemory(m_allocator, m_allocation, &mapped);
-  if (res != VK_SUCCESS || !mapped) {
-    std::cerr << "[Buffer] vkMapMemory failed: " << res << "\n";
+  if (res != VK_SUCCESS || mapped == nullptr) {
+    std::cerr << "[Buffer] vmaMapMemory failed: " << res << "\n";
     return false;
   }
 
@@ -91,7 +90,7 @@ bool VkBufferObj::upload(const void *data, VkDeviceSize size,
 
 void VkBufferObj::shutdown() noexcept {
   if (m_allocator != nullptr && m_buffer != VK_NULL_HANDLE &&
-      m_allocation == nullptr) {
+      m_allocation != nullptr) {
     vmaDestroyBuffer(m_allocator, m_buffer, m_allocation);
   }
 

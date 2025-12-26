@@ -1,13 +1,11 @@
 #pragma once
 
 #include "engine/camera/camera.hpp"
-
-#include <GLFW/glfw3.h>
+#include "platform/window/glfw_window.hpp"
 
 class CameraController {
 public:
-  // TODO: use GlfwWindow wrapper instead of GLFWwindow
-  explicit CameraController(GLFWwindow *window, Camera *camera);
+  explicit CameraController(GlfwWindow &window, Camera *camera);
 
   void enableCursorCapture(bool enabled);
 
@@ -18,12 +16,19 @@ public:
   float mouseSesnitivity = 0.10F; // deg per pixel
 
 private:
-  GLFWwindow *m_window = nullptr; // non-owning
+  GlfwWindow *m_window = nullptr; // non-owning
   Camera *m_camera = nullptr;     // non-owning
 
   bool m_firstMouse = true;
   double m_lastX = 0.0;
   double m_lastY = 0.0;
+
+  bool m_cursorCaptured = false;
+  bool m_prevMouseLeft = false;
+
+  [[nodiscard]] GLFWwindow *glfw() const noexcept {
+    return (m_window != nullptr) ? m_window->handle() : nullptr;
+  }
 
   void handleMouseLook();
   void handleKeyboard(float dtSeconds);

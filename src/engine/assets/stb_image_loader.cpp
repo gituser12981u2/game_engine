@@ -20,9 +20,10 @@ bool loadImageRGBA8(const std::string &path, ImageData &out, bool flipY) {
   int numChannels = 0;
   stbi_uc *pixels = stbi_load(path.c_str(), &width, &height, &numChannels,
                               STBI_rgb_alpha); // force RGBA
-  if (!pixels || width <= 0 || height <= 0) {
+  if (pixels == nullptr || width <= 0 || height <= 0) {
     std::cerr << "[Image] stbi_load failed: "
-              << (stbi_failure_reason() ? stbi_failure_reason() : "unknown")
+              << ((stbi_failure_reason() != nullptr) ? stbi_failure_reason()
+                                                     : "unknown")
               << "\n";
     return false;
   }

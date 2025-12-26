@@ -1,9 +1,11 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <cstring>
 #include <vector>
+#include <vulkan/vulkan_core.h>
+
+struct GLFWwindow;
 
 class GlfwWindow {
 public:
@@ -44,6 +46,8 @@ public:
 
   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
   [[nodiscard]] std::vector<const char *> requiredVulkanExtensions();
+
+  bool createVulkanSurface(VkInstance instance, VkSurfaceKHR &outSurface) const;
 
 private:
   GLFWwindow *m_window = nullptr;
