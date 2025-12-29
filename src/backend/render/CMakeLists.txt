@@ -1,8 +1,11 @@
+add_subdirectory(resources)
+
 add_library(quark_backend_render STATIC 
     renderer.cpp
-    vk_framebuffers.cpp
-    vk_pipeline.cpp
-    vk_render_pass.cpp
+    main_pass.cpp
+    swapchain_attachments.cpp
+    framebuffer_cache.cpp
+    per_frame_data.cpp
 )
 
 target_include_directories(quark_backend_render
@@ -14,7 +17,10 @@ target_link_libraries(quark_backend_render
     PUBLIC
         quark::backend::frame
         quark::backend::presentation
+        quark::backend::graphics
         quark::backend::core
+        engine::resources
+        quark::backend::render::resources
         Vulkan::Vulkan
         glm::glm
 )

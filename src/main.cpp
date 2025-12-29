@@ -43,7 +43,8 @@ int main() {
 
   app.run([&](float dt) {
     controller.update(dt);
-    app.renderer().setCameraUBO(camera.makeUbo(app.presenter().extent()));
+    app.renderer().setCameraUBO(
+        camera.makeUbo(app.presenter().swapchainExtent()));
 
     const float t = (float)glfwGetTime();
 

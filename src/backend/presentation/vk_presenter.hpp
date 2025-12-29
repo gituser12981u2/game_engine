@@ -39,14 +39,14 @@ public:
 
   [[nodiscard]] bool recreateSwapchain();
 
-  [[nodiscard]] VkFormat imageFormat() const {
+  [[nodiscard]] VkFormat colorFormat() const {
     return m_swapchain.swapchainImageFormat();
   }
-  [[nodiscard]] VkExtent2D extent() const {
-    return m_swapchain.swapchainExtent();
-  }
-  [[nodiscard]] const std::vector<VkImageView> &imageViews() const {
+  [[nodiscard]] const std::vector<VkImageView> &colorViews() const {
     return m_swapchain.swapchainImageViews();
+  }
+  [[nodiscard]] VkExtent2D swapchainExtent() const {
+    return m_swapchain.swapchainExtent();
   }
   [[nodiscard]] VkSwapchainKHR swapchain() const {
     return m_swapchain.swapchain();

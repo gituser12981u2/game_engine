@@ -2,6 +2,7 @@ add_subdirectory(core)
 add_subdirectory(frame)
 add_subdirectory(presentation)
 add_subdirectory(render)
+add_subdirectory(graphics)
 add_subdirectory(resources)
 add_subdirectory(shaders)
 
@@ -11,6 +12,7 @@ target_link_libraries(quark_backend INTERFACE
   quark::backend::frame
   quark::backend::presentation
   quark::backend::render
+  quark::backend::graphics
   engine::resources
   quark::backend::shaders
 )

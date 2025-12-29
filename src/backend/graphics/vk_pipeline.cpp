@@ -11,7 +11,6 @@
 #include <vulkan/vulkan_core.h>
 
 bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
-                              VkExtent2D extent,
                               VkPipelineLayout pipelineLayout,
                               const std::string &vertSpvPath,
                               const std::string &fragSpvPath) {
@@ -25,13 +24,8 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
     return false;
   }
 
-  if (extent.width == 0 || extent.height == 0) {
-    std::cerr << "[Pipeline] Extent is 0 height and 0 width\n";
-    return false;
-  }
-
-  // Re-init
   shutdown();
+
   m_device = device;
 
   VulkanShaderModule vertModule;

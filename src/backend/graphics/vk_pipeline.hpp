@@ -30,7 +30,7 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, VkRenderPass renderPass, VkExtent2D extent,
+  bool init(VkDevice device, VkRenderPass renderPass,
             VkPipelineLayout pipelineLayout, const std::string &vertSpvPath,
             const std::string &fragSpvPath);
   void shutdown() noexcept;
