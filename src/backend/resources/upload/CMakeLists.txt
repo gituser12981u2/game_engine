@@ -1,4 +1,4 @@
-add_library(quark_backend_resources_upload STATIC 
+add_library(quark_backend_resources_upload STATIC
     vk_buffer_uploader.cpp
     vk_texture_uploader.cpp
 )

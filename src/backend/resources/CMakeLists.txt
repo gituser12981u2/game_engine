@@ -7,7 +7,6 @@ add_subdirectory(textures)
 add_library(quark_backend_resources INTERFACE)
 target_link_libraries(quark_backend_resources INTERFACE
   quark::backend::resources::buffers
-  quark::backend::resources::buffers
   quark::backend::resources::descriptors
   quark::backend::resources::images
   quark::backend::resources::textures

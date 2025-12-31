@@ -15,6 +15,8 @@ find_package(glm CONFIG REQUIRED)
 
 find_package(Stb REQUIRED)
 
+
+
 find_path(CGLTF_INCLUDE_DIRS "cgltf.h")
 
 add_compile_options(
@@ -23,9 +25,9 @@ add_compile_options(
   $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
   $<$<COMPILE_LANGUAGE:CXX>:-pedantic-errors>
   $<$<COMPILE_LANGUAGE:CXX>:-Wshadow>
-  $<$<COMPILE_LANGUAGE:CXX>:-Wc99-designator>
-  $<$<COMPILE_LANGUAGE:CXX>:-Werror=c99-designator>
 )
+
+
 
 add_subdirectory(src)
 

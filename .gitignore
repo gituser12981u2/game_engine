@@ -3,7 +3,7 @@ build/
 build-analyze/
 .cache/
 compile_commands.json
-
+vcpkg
 shaders/*
 todo.md
 

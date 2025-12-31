@@ -34,17 +34,42 @@ ifneq ($(strip $(CMAKE_OSX_ARCHITECTURES)),)
 CMAKE_FLAGS += -DCMAKE_OSX_ARCHITECTURES=$(CMAKE_OSX_ARCHITECTURES)
 endif
 
-.PHONY: configure configure-analyze analyze tidy format format-check build run clean clean-analyze
+.PHONY: configure configure-analyze analyze tidy format format-check build run clean clean-analyze vcpkg-setup shaders
+
+configure: vcpkg-setup
+
+# PIN TO A HASH IN A BETTER WAY THAN THIS?
+VCPKG_COMMIT := 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
+
+vcpkg-setup:
+	@echo "Setting up vcpkg at commit ${VCPKG_COMMIT}..."
+
+	@if [ ! -d vcpkg ]; then \
+		git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg; \
+		cd vcpkg && git fetch origin ${VCPKG_COMMIT} && git checkout ${VCPKG_COMMIT}; \
+		./bootstrap-vcpkg.sh; \
+	else \
+		echo "vcpkg already exists, doing nothing"; \
+	fi
+
 
 configure:
 	VCPKG_DISABLE_METRICS=1 \
 	VCPKG_DEFAULT_TRIPLET=$(VCPKG_TARGET_TRIPLET) \
 	cmake -S . -B $(BUILD_DIR) $(CMAKE_FLAGS)
 
-build: configure
+build: shaders configure
 	cmake --build $(BUILD_DIR)
 
-run: build 
+GLSLC ?= glslc
+SHADERS_OUT_DIR := shaders/bin
+
+shaders:
+	@mkdir -p $(SHADERS_OUT_DIR)
+	@$(GLSLC) src/backend/shaders/shader.vert -o $(SHADERS_OUT_DIR)/shader.vert.spv
+	@$(GLSLC) src/backend/shaders/shader.frag -o $(SHADERS_OUT_DIR)/shader.frag.spv
+
+run: build
 	./$(BUILD_DIR)/src/$(ENGINE_NAME)
 
 configure-analyze:
