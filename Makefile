@@ -2,6 +2,12 @@ BUILD_DIR := build
 ANALYZE_DIR := build-analyze
 ENGINE_NAME := quark
 
+GLSLC ?= glslc
+SHADERS_OUT_DIR := shaders/bin
+
+# PIN TO A HASH IN A BETTER WAY THAN THIS?
+VCPKG_COMMIT := 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
+
 UNAME_S := $(shell uname -s)
 
 VCPKG_TARGET_TRIPLET ?=
@@ -34,13 +40,9 @@ ifneq ($(strip $(CMAKE_OSX_ARCHITECTURES)),)
 CMAKE_FLAGS += -DCMAKE_OSX_ARCHITECTURES=$(CMAKE_OSX_ARCHITECTURES)
 endif
 
-.PHONY: configure configure-analyze analyze tidy format format-check build run clean clean-analyze vcpkg-setup shaders
+.PHONY: vcpkg-setup configure configure-analyze analyze tidy format format-check build run clean clean-analyze vcpkg-clean vcpkg-clean-all shaders
 
-configure: vcpkg-setup
-
-# PIN TO A HASH IN A BETTER WAY THAN THIS?
-VCPKG_COMMIT := 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
-
+# TODO: add vcpkg clean
 vcpkg-setup:
 	@echo "Setting up vcpkg at commit ${VCPKG_COMMIT}..."
 
@@ -52,22 +54,13 @@ vcpkg-setup:
 		echo "vcpkg already exists, doing nothing"; \
 	fi
 
-
-configure:
+configure: vcpkg-setup
 	VCPKG_DISABLE_METRICS=1 \
 	VCPKG_DEFAULT_TRIPLET=$(VCPKG_TARGET_TRIPLET) \
 	cmake -S . -B $(BUILD_DIR) $(CMAKE_FLAGS)
 
 build: shaders configure
 	cmake --build $(BUILD_DIR)
-
-GLSLC ?= glslc
-SHADERS_OUT_DIR := shaders/bin
-
-shaders:
-	@mkdir -p $(SHADERS_OUT_DIR)
-	@$(GLSLC) src/backend/shaders/shader.vert -o $(SHADERS_OUT_DIR)/shader.vert.spv
-	@$(GLSLC) src/backend/shaders/shader.frag -o $(SHADERS_OUT_DIR)/shader.frag.spv
 
 run: build
 	./$(BUILD_DIR)/src/$(ENGINE_NAME)
@@ -93,8 +86,33 @@ format-check:
 	  -not -path './build*/*' -not -path './_deps/*' -not -path './vcpkg/*' \
 	  -print0 | xargs -0 clang-format -n -Werror
 
+# TODO: make obsolete by vulkan's internal API
+shaders:
+	@mkdir -p $(SHADERS_OUT_DIR)
+	@$(GLSLC) src/backend/shaders/shader.vert -o $(SHADERS_OUT_DIR)/shader.vert.spv
+	@$(GLSLC) src/backend/shaders/shader.frag -o $(SHADERS_OUT_DIR)/shader.frag.spv
+
 clean:
 	rm -rf $(BUILD_DIR)
 
 clean-analyze:
 	rm -rf $(ANALYZE_DIR)
+
+vcpkg-clean:
+	@echo "Cleaning vcpkg build artifacts (keeping vcpkg/ and installed/)"
+	@rm -rf vcpkg/buildtrees \
+	        vcpkg/packages \
+	        vcpkg/downloads \
+	        vcpkg/.cache \
+	        vcpkg/installed/vcpkg/info \
+	        vcpkg/installed/vcpkg/status \
+	        vcpkg/vcpkg_installed
+
+vcpkg-clean-all:
+	@echo "Cleaning all vcpkg artifacts (including installed/)..."
+	@rm -rf vcpkg/buildtrees \
+	        vcpkg/packages \
+	        vcpkg/downloads \
+	        vcpkg/.cache \
+	        vcpkg/installed \
+	        vcpkg/vcpkg_installed
