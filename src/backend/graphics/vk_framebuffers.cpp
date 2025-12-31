@@ -3,19 +3,32 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <span>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
 bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
-                          const std::vector<VkImageView> &swapchainImageViews,
-                          VkImageView depthView, VkExtent2D extent) {
+                          std::span<const VkImageView> colorViews,
+                          std::span<const VkImageView> depthViews,
+                          VkExtent2D extent) {
   if (device == VK_NULL_HANDLE || renderPass == VK_NULL_HANDLE) {
     std::cerr << "[Framebuffers] Device or render pass not ready\n";
     return false;
   }
 
-  if (swapchainImageViews.empty()) {
-    std::cerr << "[Framebuffers] No swapchain image views.\n";
+  if (colorViews.empty()) {
+    std::cerr << "[Framebuffers] No color image views.\n";
+    return false;
+  }
+
+  if (depthViews.empty()) {
+    std::cerr << "[Framebuffers] No depth image views.\n";
+    return false;
+  }
+
+  if (colorViews.size() != depthViews.size()) {
+    std::cerr << "[Framebuffers] Color/depth view count mismatch: color="
+              << colorViews.size() << " depth=" << depthViews.size() << "\n";
     return false;
   }
 
@@ -24,15 +37,13 @@ bool VkFramebuffers::init(VkDevice device, VkRenderPass renderPass,
     return false;
   }
 
-  // Re-init
   shutdown();
   m_device = device;
 
-  m_swapchainFramebuffers.resize(swapchainImageViews.size(), VK_NULL_HANDLE);
+  m_swapchainFramebuffers.resize(colorViews.size(), VK_NULL_HANDLE);
 
-  for (size_t i = 0; i < swapchainImageViews.size(); ++i) {
-    std::array<VkImageView, 2> attachments = {swapchainImageViews[i],
-                                              depthView};
+  for (size_t i = 0; i < colorViews.size(); ++i) {
+    std::array<VkImageView, 2> attachments = {colorViews[i], depthViews[i]};
 
     VkFramebufferCreateInfo fbInfo{};
     fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../resources/buffers/vk_buffer.hpp"
+#include "backend/resources/buffers/vk_buffer.hpp"
 
 #include <vulkan/vulkan_core.h>
 

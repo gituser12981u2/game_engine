@@ -12,6 +12,8 @@ target_link_libraries(quark_platform_input
         Vulkan::Vulkan
         glm::glm
         glfw
+        quark::platform::window
+        quark::engine::camera
 )
 
 add_library(quark::platform::input ALIAS quark_platform_input)

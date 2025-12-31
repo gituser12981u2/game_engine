@@ -13,6 +13,8 @@ target_link_libraries(quark_backend_resources_descriptors
     PUBLIC
         Vulkan::Vulkan
         glm::glm
+        quark::backend::resources::buffers
+        quark::backend::resources::textures
 )
 
 add_library(quark::backend::resources::descriptors ALIAS quark_backend_resources_descriptors)

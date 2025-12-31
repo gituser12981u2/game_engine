@@ -1,11 +1,13 @@
 #include "vk_buffer_uploader.hpp"
 
+#include "backend/profiling/upload_profiler.hpp"
+
 #include <iostream>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
 bool VkBufferUploader::init(VmaAllocator allocator, VkQueue queue,
-                            VkCommands *commands) {
+                            VkCommands *commands, UploadProfiler *profiler) {
   if (allocator == nullptr || queue == VK_NULL_HANDLE || commands == nullptr) {
     std::cerr << "[Uploader] Invalid init args\n";
     return false;
@@ -14,6 +16,7 @@ bool VkBufferUploader::init(VmaAllocator allocator, VkQueue queue,
   m_allocator = allocator;
   m_queue = queue;
   m_commands = commands;
+  m_profiler = profiler;
 
   return true;
 }
@@ -22,6 +25,7 @@ void VkBufferUploader::shutdown() noexcept {
   m_allocator = nullptr;
   m_queue = VK_NULL_HANDLE;
   m_commands = nullptr;
+  m_profiler = nullptr;
 }
 
 bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
@@ -49,9 +53,19 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
     return false;
   }
 
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedBytes, size);
+  }
+
   if (!staging.upload(data, size)) {
     std::cerr << "[Uploader] Failed to upload staging data\n";
     return false;
+  }
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, size);
   }
 
   outBuffer.shutdown();
@@ -70,12 +84,22 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
         VkBufferCopy region{};
         region.size = size;
         vkCmdCopyBuffer(cmd, staging.handle(), outBuffer.handle(), 1, &region);
+
+        if (m_profiler != nullptr) {
+          profilerAdd(m_profiler, UploadProfiler::Stat::BufferUploadCount, 1);
+          profilerAdd(m_profiler, UploadProfiler::Stat::BufferUploadBytes,
+                      size);
+        }
       });
 
   if (!ok) {
     std::cerr << "[Uploader] submitImmediate copy failed\n";
     outBuffer.shutdown();
     return false;
+  }
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadSubmitCount, 1);
   }
 
   return true;

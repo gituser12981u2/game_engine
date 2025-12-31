@@ -4,22 +4,18 @@
 #include "backend/frame/vk_commands.hpp"
 #include "backend/frame/vk_frame_manager.hpp"
 #include "backend/presentation/vk_presenter.hpp"
-#include "backend/resources/buffers/vk_per_frame_uniform_buffers.hpp"
-#include "backend/resources/descriptors/vk_material_sets.hpp"
-#include "backend/resources/descriptors/vk_per_frame_sets.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
+#include "backend/profiling/profiling_logger.hpp"
+#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/render/framebuffer_cache.hpp"
+#include "backend/render/main_pass.hpp"
+#include "backend/render/per_frame_data.hpp"
+#include "backend/render/resources/mesh_store.hpp"
+#include "backend/render/resources/resource_store.hpp"
+#include "backend/render/swapchain_attachments.hpp"
 #include "backend/resources/descriptors/vk_shader_interface.hpp"
-#include "backend/resources/images/vk_depth_image.hpp"
-#include "backend/resources/textures/vk_texture.hpp"
-#include "backend/resources/upload/vk_buffer_uploader.hpp"
-#include "backend/resources/upload/vk_texture_uploader.hpp"
-#include "engine/assets/image_data.hpp"
 #include "engine/camera/camera_ubo.hpp"
-#include "engine/mesh/mesh_data.hpp"
-#include "engine/mesh/vertex.hpp"
-#include "mesh_gpu.hpp"
-#include "vk_framebuffers.hpp"
-#include "vk_pipeline.hpp"
-#include "vk_render_pass.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -27,19 +23,10 @@
 #include <span>
 #include <string>
 #include <utility>
-#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkPresenter;
 class VkBackendCtx;
-
-struct MeshHandle {
-  uint32_t id = 0;
-};
-
-struct TextureHandle {
-  uint32_t id = UINT32_MAX;
-};
 
 struct DrawItem {
   MeshHandle mesh{};
@@ -55,7 +42,6 @@ public:
   Renderer(const Renderer &) = delete;
   Renderer &operator=(const Renderer &) = delete;
 
-  // TODO: redesign uploader's to support rebind without allocation failure
   Renderer(Renderer &&other) noexcept { *this = std::move(other); }
   Renderer &operator=(Renderer &&other) noexcept {
     if (this == &other) {
@@ -64,47 +50,40 @@ public:
 
     shutdown();
 
-    m_ctx = std::exchange(other.m_ctx, nullptr);
+    m_cpuProfiler = std::move(other.m_cpuProfiler);
+    m_gpuProfiler = std::move(other.m_gpuProfiler);
+    m_uploadProfiler = std::move(other.m_uploadProfiler);
+    m_profileReporter = std::move(other.m_profileReporter);
 
     m_framesInFlight = std::exchange(other.m_framesInFlight, 0U);
+    m_ctx = std::exchange(other.m_ctx, nullptr);
+
+    m_targets = std::move(other.m_targets);
+    m_interface = std::move(other.m_interface);
+    m_mainPass = std::move(other.m_mainPass);
+    m_fbos = std::move(other.m_fbos);
 
     m_commands = std::move(other.m_commands);
     m_frames = std::move(other.m_frames);
+    m_perFrame = std::move(other.m_perFrame);
 
-    m_interface = std::move(other.m_interface);
-    m_cameraUbo = other.m_cameraUbo;
-
-    m_perFrameBufs = std::move(other.m_perFrameBufs);
-    m_perFrameSets = std::move(other.m_perFrameSets);
-
-    m_textureUploader = std::move(other.m_textureUploader);
-    m_textures = std::move(other.m_textures);
-    m_materials = std::move(other.m_materials);
-    m_activeMaterial = std::exchange(other.m_activeMaterial, UINT32_MAX);
-
-    m_uploader = std::move(other.m_uploader);
-    m_meshes = std::move(other.m_meshes);
-
-    // Fix uploader pointer to refer to this renderer's commands
-    m_uploader.init(m_ctx->allocator(), m_ctx->graphicsQueue(), &m_commands);
-
-    m_renderPass = std::move(other.m_renderPass);
-    m_pipeline = std::move(other.m_pipeline);
-    m_framebuffers = std::move(other.m_framebuffers);
+    m_resources = std::move(other.m_resources);
 
     m_vertPath = std::exchange(other.m_vertPath, {});
     m_fragPath = std::exchange(other.m_fragPath, {});
+    m_cameraUbo = other.m_cameraUbo;
+
+    // Rebind uploader's inside stores to this renderer's command context
+    if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
+      (void)m_resources.rebind(*m_ctx, m_commands);
+    }
+
     return *this;
   }
 
   bool init(VkBackendCtx &ctx, VkPresenter &presenter, uint32_t framesInFlight,
             const std::string &vertSpvPath, const std::string &fragSpvPath);
   void shutdown() noexcept;
-
-  MeshHandle createMesh(const engine::Vertex *vertices, uint32_t vertexCount,
-                        const uint32_t *indices, uint32_t indexCount);
-  MeshHandle createMesh(const engine::MeshData &mesh);
-  [[nodiscard]] const MeshGpu *mesh(MeshHandle handle) const;
 
   [[nodiscard]] bool drawFrame(VkPresenter &presenter, MeshHandle mesh);
   [[nodiscard]] bool drawFrame(VkPresenter &presenter,
@@ -116,13 +95,23 @@ public:
 
   void setCameraUBO(const CameraUBO &ubo) { m_cameraUbo = ubo; }
 
+  // Meshes
+  MeshHandle createMesh(const engine::Vertex *vertices, uint32_t vertexCount,
+                        const uint32_t *indices, uint32_t indexCount);
+  MeshHandle createMesh(const engine::MeshData &mesh);
+  [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
+
+  // Materials
+  TextureHandle createTextureFromFile(const std::string &path, bool flipY);
   bool createTextureFromImage(const engine::ImageData &img,
                               VkTexture2D &outTex);
-  TextureHandle createTextureFromFile(const std::string &path, bool flipY);
+
   uint32_t createMaterialFromTexture(TextureHandle textureHandle);
   void setActiveMaterial(uint32_t materialIndex);
 
 private:
+  bool createDefaultMaterial() noexcept;
+
   void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent,
                    MeshHandle mesh, uint32_t material,
                    glm::vec3 pos = {0, 0, 0}, glm::vec3 rotRad = {0, 0, 0},
@@ -130,32 +119,26 @@ private:
   void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent,
                    std::span<const DrawItem> items);
 
-  VkBackendCtx *m_ctx = nullptr; // non-owning
+  CpuProfiler m_cpuProfiler;
+  VkGpuProfiler m_gpuProfiler;
+  UploadProfiler m_uploadProfiler;
+  profiling::FrameLogger m_profileReporter{};
 
   uint32_t m_framesInFlight = 0;
+  VkBackendCtx *m_ctx = nullptr; // non-owning
+
+  SwapchainTargets m_targets;
+  VkShaderInterface m_interface;
+  MainPass m_mainPass;
+  FramebufferCache m_fbos;
 
   VkCommands m_commands;
   VkFrameManager m_frames;
+  PerFrameData m_perFrame;
 
-  VkShaderInterface m_interface;
-  VkPerFrameUniformBuffers m_perFrameBufs;
-  VkPerFrameSets m_perFrameSets;
-  CameraUBO m_cameraUbo{};
-
-  std::vector<VkTexture2D> m_textures;
-  VkMaterialSets m_materials;
-  uint32_t m_activeMaterial = UINT32_MAX;
-  VkTextureUploader m_textureUploader;
-
-  std::vector<MeshGpu> m_meshes;
-  VkBufferUploader m_uploader;
-
-  VkRenderPassObj m_renderPass;
-  VkGraphicsPipeline m_pipeline;
-  VkFramebuffers m_framebuffers;
-
-  VkDepthImage m_depth;
+  ResourceStore m_resources;
 
   std::string m_vertPath;
   std::string m_fragPath;
+  CameraUBO m_cameraUbo{};
 };

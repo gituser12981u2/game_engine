@@ -11,9 +11,11 @@ target_include_directories(quark_backend_resources_upload
 target_link_libraries(quark_backend_resources_upload
     PUBLIC
       Vulkan::Vulkan
-      quark::backend::frame
       GPUOpen::VulkanMemoryAllocator
-  quark::backend::resources::textures
+      quark::backend::frame
+      quark::backend::profiling
+      quark::backend::resources::buffers
+      quark::backend::resources::textures
 )
 
 add_library(quark::backend::resources::upload ALIAS quark_backend_resources_upload)

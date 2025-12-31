@@ -1,8 +1,11 @@
-add_library(quark_backend_render STATIC
+add_subdirectory(resources)
+
+add_library(quark_backend_render STATIC 
     renderer.cpp
-    vk_framebuffers.cpp
-    vk_pipeline.cpp
-    vk_render_pass.cpp
+    main_pass.cpp
+    swapchain_attachments.cpp
+    framebuffer_cache.cpp
+    per_frame_data.cpp
 )
 
 target_include_directories(quark_backend_render
@@ -14,12 +17,16 @@ target_link_libraries(quark_backend_render
     PUBLIC
         quark::backend::frame
         quark::backend::presentation
+        quark::backend::graphics
         quark::backend::core
-    quark::backend::resources::upload
-    quark::engine::assets
-        quark::backend::shaders
+        quark::backend::resources::descriptors
+        quark::backend::profiling
+        quark::backend::render::resources
+        quark::engine::camera
         Vulkan::Vulkan
         glm::glm
+    PRIVATE
+        quark::engine::geometry
 )
 
 add_library(quark::backend::render ALIAS quark_backend_render)

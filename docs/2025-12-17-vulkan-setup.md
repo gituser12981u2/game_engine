@@ -150,4 +150,3 @@ saved with a vkWait but we want to avoid waiting much time altogether.
 The pipeline must be updated to support non hardcoded values
 to handle arbitrary 3d meshes. Then depth testing, so for the GPU
 to know in what order to render, shall be enabled. 
-

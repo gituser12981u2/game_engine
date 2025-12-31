@@ -1,6 +1,6 @@
 #include "stb_image_loader.hpp"
 
-#include "image_data.hpp"
+#include "engine/assets/image_data.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +8,7 @@
 #include <iostream>
 #include <stb_image.h>
 
-namespace engine {
+namespace engine::assets {
 
 bool loadImageRGBA8(const std::string &path, ImageData &out, bool flipY) {
   out = {};
@@ -40,4 +40,4 @@ bool loadImageRGBA8(const std::string &path, ImageData &out, bool flipY) {
   return out.valid();
 }
 
-} // namespace engine
+} // namespace engine::assets

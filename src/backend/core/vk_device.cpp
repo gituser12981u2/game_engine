@@ -79,6 +79,33 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
   return true;
 }
 
+bool supportsTimestamps(VkPhysicalDevice device, uint32_t graphicsFamily) {
+  VkPhysicalDeviceProperties props{};
+  vkGetPhysicalDeviceProperties(device, &props);
+
+  if (props.limits.timestampPeriod <= 0.0F) {
+    return false;
+  }
+
+  // If false, timestamps can still work but treat as unsupported for
+  // deterministic behavior
+  if (props.limits.timestampComputeAndGraphics == VK_FALSE) {
+    return true;
+  }
+
+  uint32_t count = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
+  std::vector<VkQueueFamilyProperties> q(count);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, q.data());
+
+  if (graphicsFamily >= count) {
+    return false;
+  }
+
+  // Must be non-zero for timestamps to be valid in queue family
+  return q[graphicsFamily].timestampValidBits != 0;
+}
+
 } // namespace
 
 bool VkDeviceCtx::init(VkInstance instance) {
@@ -97,7 +124,6 @@ bool VkDeviceCtx::init(VkInstance instance) {
 
 void VkDeviceCtx::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(m_device);
     vkDestroyDevice(m_device, nullptr);
     m_device = VK_NULL_HANDLE;
   }
@@ -125,8 +151,16 @@ bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
     // integrated)
 
     if (indices.isComplete() && extensionsSupported) {
+      const uint32_t graphicsFamily = indices.graphicsFamily.value();
+
+      if (!supportsTimestamps(device, graphicsFamily)) {
+        std::cerr
+            << "[Device] Selected GPU likely lacks usable timestamp support\n";
+        continue;
+      }
+
       m_physicalDevice = device;
-      m_queues.graphicsFamily = indices.graphicsFamily.value();
+      m_queues.graphicsFamily = graphicsFamily;
       return true;
     }
   }

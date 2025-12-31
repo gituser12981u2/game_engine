@@ -20,13 +20,18 @@ The focus of this game engine is to make a game playable on all devices with lit
 
 - [x] Arbitrary 3d Meshes (2025-12-19)
 - [x] Moveable Camera
-- [ ] Textures
-    - [ ] Albedos (start of PBR)
-    - [ ] Diffuse option
-- [ ] gITF imports
+- [x] Textures
+    - [x] Albedos (start of PBR)
+    - [x] Diffuse option
+- [ ] material SSBO (PBR) 
 - [ ] Lighting
     - [ ] Normals (PBR)
-- [ ] Vulkan Memory Allocator (VMA) refactor 
+- [ ] gITF imports
+    - [x] mesh import
+    - [ ] base texture/material
+    - [ ] modifiers
+    - [ ] normals
+- [x] Vulkan Memory Allocator (VMA) refactor 
 - [ ] Mipmaps
 - [ ] Basic physics engine
 - [ ] Player Controller

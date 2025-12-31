@@ -1,17 +1,10 @@
-add_library(quark_engine_assets STATIC
-    stb_image_impl.cpp
-    stb_image_loader.cpp
-    cgltf_impl.cpp
-    gltf_loader.cpp
-)
+add_subdirectory(gltf)
+add_subdirectory(stb_image)
 
-target_include_directories(quark_engine_assets
-    PUBLIC
-      ${CMAKE_SOURCE_DIR}/src
-      quark::backend::renderer
-    PRIVATE
-      ${Stb_INCLUDE_DIR}
-      ${CGLTF_INCLUDE_DIRS}
+add_library(quark_engine_assets INTERFACE)
+target_link_libraries(quark_engine_assets INTERFACE
+  quark::engine::assets::gltf 
+  quark::engine::assets::stb_image
 )
 
 add_library(quark::engine::assets ALIAS quark_engine_assets)

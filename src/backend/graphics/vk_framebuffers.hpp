@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -26,8 +27,8 @@ public:
   }
 
   bool init(VkDevice device, VkRenderPass renderPass,
-            const std::vector<VkImageView> &swapchainImageViews,
-            VkImageView depthView, VkExtent2D extent);
+            std::span<const VkImageView> colorViews,
+            std::span<const VkImageView> depthViews, VkExtent2D extent);
   void shutdown() noexcept;
 
   [[nodiscard]] const std::vector<VkFramebuffer> &handles() const noexcept {

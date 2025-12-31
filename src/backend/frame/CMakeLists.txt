@@ -12,6 +12,7 @@ target_link_libraries(quark_backend_frame
     PUBLIC
       Vulkan::Vulkan
       quark::backend::core
+      quark::backend::profiling
 )
 
 add_library(quark::backend::frame ALIAS quark_backend_frame)

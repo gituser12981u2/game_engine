@@ -1,22 +1,20 @@
 #include "renderer.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
-#include "backend/resources/buffers/vk_buffer.hpp"
-#include "engine/assets/stb_image_loader.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
+#include "backend/profiling/profiling_logger.hpp"
+#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/render/resources/mesh_gpu.hpp"
+#include "backend/util/scope_exit.hpp"
 #include "engine/geometry/transform.hpp"
 #include "engine/mesh/mesh_data.hpp"
-#include "engine/mesh/vertex.hpp"
-#include "mesh_gpu.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/trigonometric.hpp>
 #include <iostream>
-#include <span>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -37,7 +35,6 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  // Re-init
   shutdown();
 
   m_ctx = &ctx;
@@ -46,18 +43,16 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   m_fragPath = fragSpvPath;
 
   VkDevice device = m_ctx->device();
-  VkPhysicalDevice physicalDevice = m_ctx->physicalDevice();
-  VmaAllocator allocator = m_ctx->allocator();
 
-  if (!m_depth.init(allocator, physicalDevice, device, presenter.extent())) {
-    std::cerr << "[Renderer] Failed to create depth buffer\n";
+  if (!m_gpuProfiler.init(*m_ctx, m_framesInFlight)) {
+    std::cerr << "[Renderer] Failed to init GPU profiler\n";
     shutdown();
     return false;
   }
 
-  // Create render pass
-  if (!m_renderPass.init(device, presenter.imageFormat(), m_depth.format())) {
-    std::cerr << "[Renderer] Failed to create render pass\n";
+  // Create swapchain targets
+  if (!m_targets.init(*m_ctx, presenter)) {
+    std::cerr << "[Renderer] Failed to create depth targets\n";
     shutdown();
     return false;
   }
@@ -69,18 +64,16 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  // Create graphics pipeline
-  if (!m_pipeline.init(device, m_renderPass.handle(), presenter.extent(),
-                       m_interface.pipelineLayout(), m_vertPath, m_fragPath)) {
-    std::cerr << "[Renderer] Failed to create graphics pipeline\n";
+  // Create main pass
+  if (!m_mainPass.init(*m_ctx, presenter, m_targets, m_interface, m_vertPath,
+                       m_fragPath)) {
+    std::cerr << "[Renderer] Failed to init main pass\n";
     shutdown();
     return false;
   }
 
   // Create frame buffers
-  if (!m_framebuffers.init(device, m_renderPass.handle(),
-                           presenter.imageViews(), m_depth.view(),
-                           presenter.extent())) {
+  if (!m_fbos.init(*m_ctx, presenter, m_targets, m_mainPass)) {
     std::cerr << "[Renderer] Failed to create framebuffers\n";
     shutdown();
     return false;
@@ -93,34 +86,14 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  if (!m_perFrameBufs.init(allocator, m_framesInFlight, sizeof(CameraUBO))) {
-    std::cerr << "[Renderer] Failed to init camera UBO\n";
+  if (!m_perFrame.init(*m_ctx, m_framesInFlight, m_interface)) {
+    std::cerr << "[Renderer] Failed to init per-frame data\n";
     shutdown();
     return false;
   }
 
-  if (!m_perFrameSets.init(device, m_interface.setLayoutPerFrame(),
-                           m_perFrameBufs)) {
-    std::cerr << "[Renderer] Failed to init camera UBO\n";
-    shutdown();
-    return false;
-  }
-
-  if (!m_uploader.init(allocator, m_ctx->graphicsQueue(), &m_commands)) {
-    std::cerr << "[Renderer] Failed to init uploader\n";
-    shutdown();
-    return false;
-  }
-
-  if (!m_textureUploader.init(allocator, device, m_ctx->graphicsQueue(),
-                              &m_commands)) {
-    std::cerr << "[Renderer] Failed to init texture uploader\n";
-    shutdown();
-    return false;
-  }
-
-  if (!m_materials.init(device, m_interface.setLayoutMaterial(), 128)) {
-    std::cerr << "[Renderer] Failed to init material sets\n";
+  if (!m_resources.init(*m_ctx, m_commands, m_interface, &m_uploadProfiler)) {
+    std::cerr << "[Renderer] Failed to init resource store\n";
     shutdown();
     return false;
   }
@@ -132,14 +105,15 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  const uint32_t imageCount =
-      static_cast<uint32_t>(presenter.imageViews().size());
-
-  if (!m_frames.init(device, m_framesInFlight, imageCount)) {
+  if (!m_frames.init(device, m_framesInFlight, presenter.imageCount())) {
     std::cerr << "[Renderer] Failed to create frame sync objects\n";
     shutdown();
     return false;
   }
+
+  // m_uploadProfiler.endFrame();
+  // profiling::logUploadOnce("ResourceStore init", m_uploadProfiler);
+
   return true;
 }
 
@@ -156,92 +130,23 @@ void Renderer::shutdown() noexcept {
 
   // Commands-dependents
   m_frames.shutdown();
-
-  for (auto &mesh : m_meshes) {
-    mesh.shutdown();
-  }
-  m_meshes.clear();
-
-  m_uploader.shutdown();
-  m_interface.shutdown();
-
-  m_perFrameSets.shutdown();
-  m_perFrameBufs.shutdown();
-
-  for (auto &texture : m_textures) {
-    texture.shutdown();
-  }
-  m_textures.clear();
-
-  m_textureUploader.shutdown();
-  m_materials.shutdown();
-
+  m_resources.shutdown();
   m_commands.shutdown();
 
+  m_perFrame.shutdown();
+
   // Swapchain-dependents
-  m_framebuffers.shutdown();
-  m_pipeline.shutdown();
-  m_renderPass.shutdown();
-  m_depth.shutdown();
+  m_fbos.shutdown();
+  m_mainPass.shutdown();
+  m_interface.shutdown();
+  m_targets.shutdown();
 
   m_ctx = nullptr;
   m_framesInFlight = 0;
+  m_gpuProfiler.shutdown();
 
   m_vertPath.clear();
   m_fragPath.clear();
-}
-
-MeshHandle Renderer::createMesh(const engine::Vertex *vertices,
-                                uint32_t vertexCount, const uint32_t *indices,
-                                uint32_t indexCount) {
-  MeshGpu gpu{};
-
-  if (vertices == nullptr || vertexCount == 0) {
-    std::cerr << "[Renderer] createMesh vertices or vertex count are 0\n";
-    return {};
-  }
-
-  const VkDeviceSize vbSize =
-      VkDeviceSize(sizeof(engine::Vertex)) * vertexCount;
-  if (!m_uploader.uploadToDeviceLocalBuffer(
-          vertices, vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, gpu.vertex)) {
-    std::cerr << "[Renderer] vertex upload failed\n";
-    return {};
-  }
-
-  gpu.vertexCount = vertexCount;
-
-  if (indices != nullptr && indexCount > 0) {
-    const VkDeviceSize ibSize = VkDeviceSize(sizeof(uint32_t)) * indexCount;
-    if (!m_uploader.uploadToDeviceLocalBuffer(
-            indices, ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, gpu.index)) {
-      std::cerr << "[Renderer] indice upload failed\n";
-      gpu.shutdown();
-      return {};
-    }
-
-    gpu.indexCount = indexCount;
-    // TODO: make dynamic
-    gpu.indexType = VK_INDEX_TYPE_UINT32;
-  }
-
-  m_meshes.push_back(std::move(gpu));
-  return MeshHandle{static_cast<uint32_t>(m_meshes.size() - 1)};
-}
-
-MeshHandle Renderer::createMesh(const engine::MeshData &mesh) {
-  return createMesh(mesh.vertices.data(),
-                    static_cast<std::uint32_t>(mesh.vertices.size()),
-                    mesh.indices.empty() ? nullptr : mesh.indices.data(),
-                    static_cast<std::uint32_t>(mesh.indices.size()));
-}
-
-const MeshGpu *Renderer::mesh(MeshHandle handle) const {
-  if (handle.id >= m_meshes.size()) {
-    return nullptr;
-  }
-
-  return &m_meshes[handle.id];
 }
 
 void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
@@ -250,7 +155,7 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
                            glm::vec3 scale) {
   DrawItem item{};
   item.mesh = mesh;
-  item.material = (material == UINT32_MAX) ? m_activeMaterial : material;
+  item.material = material;
   item.model = engine::makeModel(pos, rotRad, scale);
 
   recordFrame(cmd, fb, extent, std::span<const DrawItem>(&item, 1));
@@ -262,6 +167,11 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   vkBeginCommandBuffer(cmd, &beginInfo);
 
+  const uint32_t frameIndex = m_frames.currentFrameIndex();
+
+  m_gpuProfiler.beginFrameCmd(cmd, frameIndex);
+  m_gpuProfiler.markFrameBegin(cmd, frameIndex);
+
   std::array<VkClearValue, 2> clears{};
   clears[0].color = {{0.05F, 0.05F, 0.08F, 1.0F}};
   clears[1].depthStencil =
@@ -269,16 +179,18 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
 
   VkRenderPassBeginInfo rpBegin{};
   rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-  rpBegin.renderPass = m_renderPass.handle();
+  rpBegin.renderPass = m_mainPass.renderPass();
   rpBegin.framebuffer = fb;
   rpBegin.renderArea.offset = VkOffset2D{0, 0};
   rpBegin.renderArea.extent = extent;
   rpBegin.clearValueCount = static_cast<uint32_t>(clears.size());
   rpBegin.pClearValues = clears.data();
 
+  m_gpuProfiler.markMainPassBegin(cmd, frameIndex);
   vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    m_pipeline.pipeline());
+                    m_mainPass.pipeline());
+  m_cpuProfiler.incPipelineBinds(1);
 
   // Viewport / scissor
   VkViewport viewport{};
@@ -295,51 +207,67 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   scissor.extent = extent;
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  m_perFrameSets.bind(cmd, m_interface.pipelineLayout(), 0,
-                      m_frames.currentFrameIndex());
+  m_perFrame.bind(cmd, m_interface, m_frames.currentFrameIndex());
+  m_cpuProfiler.incDescriptorBinds(1);
 
   for (const DrawItem &item : items) {
-    if (item.mesh.id >= m_meshes.size()) {
+    m_cpuProfiler.incDrawCalls(1);
+    m_cpuProfiler.incDescriptorBinds(1);
+
+    const MeshGpu *mesh = m_resources.meshes().get(item.mesh);
+    if (mesh == nullptr) {
       continue;
     }
 
-    if (item.material != UINT32_MAX) {
-      m_materials.bind(cmd, m_interface.pipelineLayout(), 1, item.material);
-    }
+    m_resources.materials().bindMaterial(cmd, m_interface.pipelineLayout(), 1,
+                                         item.material);
 
     vkCmdPushConstants(cmd, m_interface.pipelineLayout(),
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4),
                        &item.model);
 
-    const MeshGpu &mesh = m_meshes[item.mesh.id];
     VkDeviceSize vertBufOffset = 0;
-    VkDeviceSize indexBufOffset = 0;
-    VkBuffer vertBuf = mesh.vertex.handle();
+    VkBuffer vertBuf = mesh->vertex.handle();
     vkCmdBindVertexBuffers(cmd, 0, 1, &vertBuf, &vertBufOffset);
 
-    if (mesh.indexed()) {
-      vkCmdBindIndexBuffer(cmd, mesh.index.handle(), indexBufOffset,
-                           mesh.indexType);
-      vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+    if (mesh->indexed()) {
+      VkDeviceSize indexBufOffset = 0;
+      vkCmdBindIndexBuffer(cmd, mesh->index.handle(), indexBufOffset,
+                           mesh->indexType);
+      vkCmdDrawIndexed(cmd, mesh->indexCount, 1, 0, 0, 0);
+      m_cpuProfiler.addTriangles(mesh->indexCount / 3);
     } else {
-      vkCmdDraw(cmd, mesh.vertexCount, 1, 0, 0);
+      vkCmdDraw(cmd, mesh->vertexCount, 1, 0, 0);
+      m_cpuProfiler.addTriangles(mesh->vertexCount / 3);
     }
   }
 
   vkCmdEndRenderPass(cmd);
+  m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
+
+  m_gpuProfiler.markFrameEnd(cmd, frameIndex);
   vkEndCommandBuffer(cmd);
 }
 
 bool Renderer::drawFrame(VkPresenter &presenter, MeshHandle mesh) {
   DrawItem item{};
   item.mesh = mesh;
-  item.material = m_activeMaterial;
+  item.material = UINT32_MAX;
 
   return drawFrame(presenter, std::span<const DrawItem>(&item, 1));
 }
 
 bool Renderer::drawFrame(VkPresenter &presenter,
                          std::span<const DrawItem> items) {
+  auto endGuard = makeScopeExit([&] {
+    m_cpuProfiler.endFrame();
+    m_uploadProfiler.endFrame();
+    m_profileReporter.logPerFrame(m_cpuProfiler, m_gpuProfiler,
+                                  m_uploadProfiler);
+  });
+
+  CpuProfiler::Scope frameScope(m_cpuProfiler, CpuProfiler::Stat::FrameTotal);
+
   if (m_ctx->device() == VK_NULL_HANDLE) {
     return false;
   }
@@ -347,7 +275,11 @@ bool Renderer::drawFrame(VkPresenter &presenter,
   using FrameStatus = VkFrameManager::FrameStatus;
 
   uint32_t imageIndex = 0;
-  auto st = m_frames.beginFrame(presenter.swapchain(), imageIndex);
+
+  FrameStatus st = FrameStatus::Ok;
+  st = m_frames.beginFrame(presenter.swapchain(), imageIndex, UINT64_MAX,
+                           &m_cpuProfiler);
+
   if (st == FrameStatus::OutOfDate) {
     (void)recreateSwapchainDependent(presenter, m_vertPath, m_fragPath);
     return true;
@@ -359,17 +291,32 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
 
-  if (!m_perFrameBufs.update(frameIndex, &m_cameraUbo, sizeof(m_cameraUbo))) {
-    std::cerr << "[Renderer] Failed to update camera UBO\n";
+  {
+    CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::UpdatePerFrameUBO);
+    (void)m_perFrame.update(frameIndex, m_cameraUbo);
   }
 
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
   vkResetCommandBuffer(cmd, 0);
 
-  recordFrame(cmd, m_framebuffers.at(imageIndex), presenter.extent(), items);
+  {
+    CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::RecordCmd);
+    recordFrame(cmd, m_fbos.at(imageIndex), presenter.swapchainExtent(), items);
+  }
 
-  auto pst = m_frames.submitAndPresent(m_ctx->graphicsQueue(),
-                                       presenter.swapchain(), imageIndex, cmd);
+  FrameStatus sub = m_frames.submit(
+      m_ctx->graphicsQueue(), imageIndex, cmd,
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, &m_cpuProfiler);
+  if (sub != FrameStatus::Ok) {
+    return false;
+  }
+
+  FrameStatus pst =
+      m_frames.present(m_ctx->graphicsQueue(), presenter.swapchain(),
+                       imageIndex, &m_cpuProfiler);
+
+  m_gpuProfiler.onFrameSubmitted();
+  (void)m_gpuProfiler.tryCollect(frameIndex);
 
   // TODO: handle SUBOPTIMAL recreate, i.e when convienent instead of now
   if (pst == FrameStatus::OutOfDate) {
@@ -383,61 +330,35 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
                                           const std::string &vertSpvPath,
                                           const std::string &fragSpvPath) {
+  profiling::EventScope scope(profiling::Event::SwapchainRecreate);
+
   if (m_ctx == nullptr || m_ctx->device() == VK_NULL_HANDLE) {
     return false;
   }
 
   VkDevice device = m_ctx->device();
+  {
+    profiling::EventScope w(profiling::Event::DeviceWaitIdle);
+    vkDeviceWaitIdle(device);
+  }
 
-  const VkFormat oldFormat = presenter.imageFormat();
-  const VkExtent2D oldExtent = presenter.extent();
-
-  vkDeviceWaitIdle(device);
-
-  m_framebuffers.shutdown();
+  m_fbos.shutdown();
 
   if (!presenter.recreateSwapchain()) {
     return false;
   }
 
-  // Keep pipeline and render pass unless format changes
-  const VkFormat newFormat = presenter.imageFormat();
-  const bool formatChanged = (newFormat != oldFormat);
-
-  // Keep depth unless extent changes
-  const VkExtent2D newExtent = presenter.extent();
-  const bool extentChanged = oldExtent.width != newExtent.width ||
-                             oldExtent.height != newExtent.height;
-
-  if (extentChanged) {
-    m_depth.shutdown();
-
-    // Recreate depth
-    if (!m_depth.init(m_ctx->allocator(), m_ctx->physicalDevice(), device,
-                      presenter.extent())) {
-      return false;
-    }
+  if (!m_targets.recreateIfNeeded(*m_ctx, presenter)) {
+    return false;
   }
 
-  if (formatChanged) {
-    m_pipeline.shutdown();
-    m_renderPass.shutdown();
-
-    if (!m_renderPass.init(device, presenter.imageFormat(), m_depth.format())) {
-      return false;
-    }
-
-    if (!m_pipeline.init(device, m_renderPass.handle(), presenter.extent(),
-                         m_interface.pipelineLayout(), vertSpvPath,
-                         fragSpvPath)) {
-      return false;
-    }
+  if (!m_mainPass.recreateIfNeeded(*m_ctx, presenter, m_targets, m_interface,
+                                   vertSpvPath, fragSpvPath)) {
+    return false;
   }
 
   // Recreate framebuffers
-  if (!m_framebuffers.init(device, m_renderPass.handle(),
-                           presenter.imageViews(), m_depth.view(),
-                           presenter.extent())) {
+  if (!m_fbos.rebuild(*m_ctx, presenter, m_targets, m_mainPass)) {
     return false;
   }
 
@@ -445,52 +366,35 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   return m_frames.onSwapchainRecreated(imageCount);
 }
 
-uint32_t Renderer::createMaterialFromTexture(TextureHandle textureHandle) {
-  if (textureHandle.id >= m_textures.size() ||
-      !m_textures[textureHandle.id].valid()) {
-    std::cerr << "[Renderer] Invalid texture handle\n";
-    return UINT32_MAX;
-  }
-  return m_materials.allocateForTexture(m_textures[textureHandle.id]);
+MeshHandle Renderer::createMesh(const engine::Vertex *vertices,
+                                uint32_t vertexCount, const uint32_t *indices,
+                                uint32_t indexCount) {
+  return m_resources.meshes().createMesh(vertices, vertexCount, indices,
+                                         indexCount);
 }
 
-void Renderer::setActiveMaterial(uint32_t materialIndex) {
-  m_activeMaterial = materialIndex;
+MeshHandle Renderer::createMesh(const engine::MeshData &mesh) {
+  return m_resources.meshes().createMesh(mesh);
+}
+
+const MeshGpu *Renderer::get(MeshHandle handle) const {
+  return m_resources.meshes().get(handle);
 }
 
 TextureHandle Renderer::createTextureFromFile(const std::string &path,
                                               bool flipY) {
-  engine::ImageData img;
-  if (!loadImageRGBA8(path, img, flipY)) {
-    std::cerr << "[Renderer] Failed to load image: " << path << "\n";
-    return {};
-  }
+  return m_resources.materials().createTextureFromFile(path, flipY);
+}
 
-  VkTexture2D tex;
-  if (!m_textureUploader.uploadRGBA8(img.pixels.data(), img.width, img.height,
-                                     tex)) {
-    std::cerr << "[Renderer] Failed to create texture from file\n";
-    return {};
-  }
-
-  m_textures.push_back(std::move(tex));
-  return TextureHandle{static_cast<uint32_t>(m_textures.size() - 1)};
+uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
+  return m_resources.materials().createMaterialFromTexture(handle);
 }
 
 bool Renderer::createTextureFromImage(const engine::ImageData &img,
                                       VkTexture2D &outTex) {
-  if (!img.valid()) {
-    std::cerr << "[Renderer] createTextureFromImage invalid image\n";
-    return false;
-  }
+  return m_resources.materials().createTextureFromImage(img, outTex);
+}
 
-  const size_t expected = size_t(img.width) * img.height * 4ULL;
-  if (img.pixels.size() != expected) {
-    std::cerr << "[Renderer] Image byte size mismatch: have="
-              << img.pixels.size() << " expected=" << expected << "\n";
-    return false;
-  }
-
-  return m_textureUploader.uploadRGBA8(img.pixels.data(), img.width, img.height,
-                                       outTex);
+void Renderer::setActiveMaterial(uint32_t materialIndex) {
+  m_resources.materials().setActiveMaterial(materialIndex);
 }

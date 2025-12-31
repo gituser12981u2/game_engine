@@ -1,5 +1,7 @@
 #include "vk_frame_manager.hpp"
 
+#include "backend/profiling/cpu_profiler.hpp"
+
 #include <cstdint>
 #include <ctime>
 #include <iostream>
@@ -111,7 +113,8 @@ void VkFrameManager::destroySyncObjects() noexcept {
 
 VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
                                                        uint32_t &outImageIndex,
-                                                       uint64_t timeout) {
+                                                       uint64_t timeout,
+                                                       CpuProfiler *profiler) {
   if (m_device == VK_NULL_HANDLE) {
     return FrameStatus::Error;
   }
@@ -123,17 +126,31 @@ VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
   VkFence frameFence = m_inFlightFences[m_currentFrame];
 
   // Wait for CPU-frame fence
-  const VkResult waitRes =
-      vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
+  VkResult waitRes = VK_SUCCESS;
+  if (profiler != nullptr) {
+    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::WaitForFence);
+    waitRes =
+        vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
+  } else {
+    waitRes =
+        vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
+  }
   if (waitRes != VK_SUCCESS) {
     std::cerr << "[Frame] vkWaitForFences failed: " << waitRes << "\n";
     return FrameStatus::Error;
   }
 
-  // Acquire image
-  const VkResult acq = vkAcquireNextImageKHR(m_device, swapchain, timeout,
-                                             m_imageAvailable[m_currentFrame],
-                                             VK_NULL_HANDLE, &outImageIndex);
+  VkResult acq = VK_SUCCESS;
+  if (profiler != nullptr) {
+    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::Acquire);
+    acq = vkAcquireNextImageKHR(m_device, swapchain, timeout,
+                                m_imageAvailable[m_currentFrame],
+                                VK_NULL_HANDLE, &outImageIndex);
+  } else {
+    acq = vkAcquireNextImageKHR(m_device, swapchain, timeout,
+                                m_imageAvailable[m_currentFrame],
+                                VK_NULL_HANDLE, &outImageIndex);
+  }
   if (acq == VK_ERROR_OUT_OF_DATE_KHR) {
     std::cerr << "[Frame] vkAcquireNextImageKHR returned OUT_OF_DATE\n";
     return FrameStatus::OutOfDate;
@@ -152,8 +169,14 @@ VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
   }
 
   if (m_imagesInFlight[outImageIndex] != VK_NULL_HANDLE) {
-    vkWaitForFences(m_device, kOneFence, &m_imagesInFlight[outImageIndex],
-                    kWaitAll, timeout);
+    VkFence imgFence = m_imagesInFlight[outImageIndex];
+
+    if (profiler != nullptr) {
+      CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::WaitForFence);
+      vkWaitForFences(m_device, kOneFence, &imgFence, kWaitAll, timeout);
+    } else {
+      vkWaitForFences(m_device, kOneFence, &imgFence, kWaitAll, timeout);
+    }
   }
 
   m_imagesInFlight[outImageIndex] = frameFence;
@@ -163,14 +186,17 @@ VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
 }
 
 VkFrameManager::FrameStatus
-VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
-                                 uint32_t imageIndex, VkCommandBuffer cmd,
-                                 VkPipelineStageFlags waitStage) {
-  if (m_device == VK_NULL_HANDLE) {
-    return FrameStatus::Error;
-  }
+VkFrameManager::submit(VkQueue queue, uint32_t imageIndex, VkCommandBuffer cmd,
+                       VkPipelineStageFlags waitStage, CpuProfiler *profiler) {
+  // if (m_device == VK_NULL_HANDLE) {
+  //   return FrameStatus::Error;
+  // }
+  //
+  // if (queue == VK_NULL_HANDLE) {
+  //   return FrameStatus::Error;
+  // }
 
-  if (queue == VK_NULL_HANDLE) {
+  if (imageIndex >= m_renderFinished.size()) {
     return FrameStatus::Error;
   }
 
@@ -188,11 +214,31 @@ VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
   submit.signalSemaphoreCount = 1;
   submit.pSignalSemaphores = &signalSem;
 
-  VkResult sub = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
-  if (sub != VK_SUCCESS) {
-    std::cerr << "[Frame] vkQueueSubmit failed: " << sub << "\n";
+  VkResult res = VK_SUCCESS;
+  if (profiler != nullptr) {
+    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueueSubmit);
+    res = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
+  } else {
+    res = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
+  }
+
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Frame] vkQueueSubmit failed: " << res << "\n";
     return FrameStatus::Error;
   }
+
+  return FrameStatus::Ok;
+}
+
+VkFrameManager::FrameStatus VkFrameManager::present(VkQueue queue,
+                                                    VkSwapchainKHR swapchain,
+                                                    uint32_t imageIndex,
+                                                    CpuProfiler *profiler) {
+  if (imageIndex >= m_renderFinished.size()) {
+    return FrameStatus::Error;
+  }
+
+  VkSemaphore signalSem = m_renderFinished[imageIndex];
 
   VkPresentInfoKHR present{};
   present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -202,16 +248,23 @@ VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
   present.pSwapchains = &swapchain;
   present.pImageIndices = &imageIndex;
 
-  VkResult pres = vkQueuePresentKHR(queue, &present);
+  VkResult res = VK_SUCCESS;
+  if (profiler != nullptr) {
+    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueuePresent);
+    res = vkQueuePresentKHR(queue, &present);
+  } else {
+    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueuePresent);
+    res = vkQueuePresentKHR(queue, &present);
+  }
 
-  if (pres == VK_ERROR_OUT_OF_DATE_KHR) {
+  if (res == VK_ERROR_OUT_OF_DATE_KHR) {
     std::cerr << "[Frame] vkQueuePresentKHR returned OUT_OF_DATE\n";
     return FrameStatus::OutOfDate;
   }
 
   static bool suboptimal_logged = false;
 
-  if (pres == VK_SUBOPTIMAL_KHR) {
+  if (res == VK_SUBOPTIMAL_KHR) {
     if (!suboptimal_logged) {
       std::cerr << "[Frame] vkQueuePresentKHR returned SUBOPTIMAL\n";
       suboptimal_logged = true;
@@ -221,8 +274,8 @@ VkFrameManager::submitAndPresent(VkQueue queue, VkSwapchainKHR swapchain,
     return FrameStatus::Suboptimal;
   }
 
-  if (pres != VK_SUCCESS) {
-    std::cerr << "[Frame] vkQueuePresentKHR failed: " << pres << "\n";
+  if (res != VK_SUCCESS) {
+    std::cerr << "[Frame] vkQueuePresentKHR failed: " << res << "\n";
     return FrameStatus::Error;
   }
 

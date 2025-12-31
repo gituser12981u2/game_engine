@@ -124,6 +124,7 @@ bool VkCommands::submitImmediate(
     return false;
   }
 
+  // TODO: try not to wait
   vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
 
   vkDestroyFence(device, fence, nullptr);

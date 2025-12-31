@@ -12,6 +12,7 @@ target_link_libraries(quark_backend_presentation
     PUBLIC
         Vulkan::Vulkan
         quark::backend::core
+        quark::platform::window
 )
 
 add_library(quark::backend::presentation ALIAS quark_backend_presentation)

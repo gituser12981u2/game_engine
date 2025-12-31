@@ -33,6 +33,9 @@ public:
   EngineApp(const EngineApp &) = delete;
   EngineApp &operator=(const EngineApp &) = delete;
 
+  EngineApp(EngineApp &&) = delete;
+  EngineApp &operator=(EngineApp &&) = delete;
+
   bool init(const AppConfig &cfg);
   void shutdown() noexcept;
 
