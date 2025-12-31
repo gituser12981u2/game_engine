@@ -13,6 +13,7 @@ target_link_libraries(quark_backend_resources_upload
       Vulkan::Vulkan
       GPUOpen::VulkanMemoryAllocator
       quark::backend::frame
+      quark::backend::profiling
       quark::backend::resources::buffers
       quark::backend::resources::textures
 )

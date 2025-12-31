@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/profiling/profiler.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
 
 #include <cstdint>
 #include <utility>

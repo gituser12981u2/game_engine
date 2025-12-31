@@ -4,8 +4,9 @@
 #include "backend/frame/vk_commands.hpp"
 #include "backend/frame/vk_frame_manager.hpp"
 #include "backend/presentation/vk_presenter.hpp"
-#include "backend/profiling/profiler.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
 #include "backend/profiling/profiling_logger.hpp"
+#include "backend/profiling/upload_profiler.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 #include "backend/render/framebuffer_cache.hpp"
 #include "backend/render/main_pass.hpp"
@@ -49,7 +50,10 @@ public:
 
     shutdown();
 
-    // TODO: add profiler stuff
+    m_cpuProfiler = std::move(other.m_cpuProfiler);
+    m_gpuProfiler = std::move(other.m_gpuProfiler);
+    m_uploadProfiler = std::move(other.m_uploadProfiler);
+    m_profileReporter = std::move(other.m_profileReporter);
 
     m_framesInFlight = std::exchange(other.m_framesInFlight, 0U);
     m_ctx = std::exchange(other.m_ctx, nullptr);
@@ -117,6 +121,7 @@ private:
 
   CpuProfiler m_cpuProfiler;
   VkGpuProfiler m_gpuProfiler;
+  UploadProfiler m_uploadProfiler;
   profiling::FrameLogger m_profileReporter{};
 
   uint32_t m_framesInFlight = 0;

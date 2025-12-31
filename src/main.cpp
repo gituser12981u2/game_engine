@@ -41,6 +41,12 @@ int main() {
   auto texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
   uint32_t material = app.renderer().createMaterialFromTexture(texture);
 
+  // const uint32_t cubeCount = 10'000;
+  // const float spacing = 2.5F;
+  // const uint32_t gridW =
+  //     static_cast<uint32_t>(std::ceil(std::sqrt((double)cubeCount)));
+  // const uint32_t gridH = (cubeCount + gridW - 1) / gridW;
+
   app.run([&](float dt) {
     controller.update(dt);
     app.renderer().setCameraUBO(
@@ -50,6 +56,34 @@ int main() {
 
     std::vector<DrawItem> draw;
     draw.reserve(tree.drawItems.size() + 2);
+    // draw.reserve(2);
+
+    // std::vector<DrawItem> draw;
+    // draw.resize(cubeCount);
+
+    // for (uint32_t i = 0; i < cubeCount; ++i) {
+    //   draw[i].mesh = cube;
+    //   draw[i].material = material;
+    //   draw[i].model = glm::mat4(1.0F);
+    // }
+
+    // for (uint32_t i = 0; i < cubeCount; ++i) {
+    //   const uint32_t x = i % gridW;
+    //   const uint32_t z = i / gridW;
+    //
+    //   // center grid around origin
+    //   const float fx =
+    //       (static_cast<float>(x) - static_cast<float>(gridW - 1) * 0.5f) *
+    //       spacing;
+    //   const float fz =
+    //       (static_cast<float>(z) - static_cast<float>(gridH - 1) * 0.5f) *
+    //       spacing;
+    //
+    //   // small per-cube rotation variation based on index
+    //   const float r = t * 0.7F + static_cast<float>(i) * 0.001F;
+    //
+    //   draw[i].model = engine::makeModel({fx, 0.0F, fz}, {0.0F, r, 0.0f});
+    // }
 
     DrawItem cubeA{};
     cubeA.mesh = cube;

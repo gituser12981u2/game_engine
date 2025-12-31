@@ -14,6 +14,7 @@ target_link_libraries(quark_backend_render_resources
         quark::backend::graphics
         quark::backend::frame
         quark::backend::core
+        quark::backend::profiling
         quark::backend::resources::upload
         quark::backend::resources::descriptors
         quark::backend::resources::buffers 

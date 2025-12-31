@@ -1,11 +1,16 @@
 #include "backend/render/resources/mesh_store.hpp"
+#include "backend/profiling/upload_profiler.hpp"
 
 #include <iostream>
 
-bool MeshStore::init(VkBackendCtx &ctx, class VkCommands &commands) {
+bool MeshStore::init(VkBackendCtx &ctx, class VkCommands &commands,
+                     UploadProfiler *profiler) {
   shutdown();
 
-  if (!m_uploader.init(ctx.allocator(), ctx.graphicsQueue(), &commands)) {
+  m_uploaderProfiler = profiler;
+
+  if (!m_uploader.init(ctx.allocator(), ctx.graphicsQueue(), &commands,
+                       m_uploaderProfiler)) {
     std::cerr << "[MeshStore] Failed to init uploader\n";
     shutdown();
     return false;
@@ -21,6 +26,8 @@ void MeshStore::shutdown() noexcept {
 
   m_meshes.clear();
   m_uploader.shutdown();
+
+  m_uploaderProfiler = nullptr;
 }
 
 MeshHandle MeshStore::createMesh(const engine::Vertex *vertices,

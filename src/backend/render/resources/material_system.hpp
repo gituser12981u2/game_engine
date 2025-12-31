@@ -2,6 +2,7 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/frame/vk_commands.hpp"
+#include "backend/profiling/upload_profiler.hpp"
 #include "backend/resources/descriptors/vk_material_sets.hpp"
 #include "backend/resources/textures/vk_texture.hpp"
 #include "backend/resources/upload/vk_texture_uploader.hpp"
@@ -18,7 +19,7 @@ public:
   // TODO: make maxMaterials dynamic
   bool init(VkBackendCtx &ctx, class VkCommands &commands,
             VkDescriptorSetLayout materialSetLayout,
-            uint32_t maxMaterials = 128);
+            uint32_t maxMaterials = 128, UploadProfiler *profiler = nullptr);
   void shutdown() noexcept;
 
   TextureHandle createTextureFromFile(const std::string &path, bool flipY);
@@ -37,7 +38,8 @@ public:
 
   bool rebind(VkBackendCtx &ctx, VkCommands &commands) {
     return m_textureUploader.init(ctx.allocator(), ctx.device(),
-                                  ctx.graphicsQueue(), &commands);
+                                  ctx.graphicsQueue(), &commands,
+                                  m_uploaderProfiler);
   }
 
 private:
@@ -49,4 +51,6 @@ private:
   VkMaterialSets m_materialSets;
   uint32_t m_defaultMaterial = UINT32_MAX;
   uint32_t m_activeMaterial = UINT32_MAX;
+
+  UploadProfiler *m_uploaderProfiler = nullptr; // non-owning
 };

@@ -1,7 +1,7 @@
 #include "renderer.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
-#include "backend/profiling/profiler.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
 #include "backend/profiling/profiling_logger.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 #include "backend/render/resources/mesh_gpu.hpp"
@@ -92,7 +92,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  if (!m_resources.init(*m_ctx, m_commands, m_interface)) {
+  if (!m_resources.init(*m_ctx, m_commands, m_interface, &m_uploadProfiler)) {
     std::cerr << "[Renderer] Failed to init resource store\n";
     shutdown();
     return false;
@@ -110,6 +110,10 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     shutdown();
     return false;
   }
+
+  // m_uploadProfiler.endFrame();
+  // profiling::logUploadOnce("ResourceStore init", m_uploadProfiler);
+
   return true;
 }
 
@@ -257,7 +261,9 @@ bool Renderer::drawFrame(VkPresenter &presenter,
                          std::span<const DrawItem> items) {
   auto endGuard = makeScopeExit([&] {
     m_cpuProfiler.endFrame();
-    m_profileReporter.logIfDue(m_cpuProfiler, m_gpuProfiler);
+    m_uploadProfiler.endFrame();
+    m_profileReporter.logPerFrame(m_cpuProfiler, m_gpuProfiler,
+                                  m_uploadProfiler);
   });
 
   CpuProfiler::Scope frameScope(m_cpuProfiler, CpuProfiler::Stat::FrameTotal);

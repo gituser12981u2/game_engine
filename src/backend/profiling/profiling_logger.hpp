@@ -1,6 +1,7 @@
 #pragma once
 
-#include "backend/profiling/profiler.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
+#include "backend/profiling/upload_profiler.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 
 #include <chrono>
@@ -14,9 +15,15 @@ namespace profiling {
 class FrameLogger {
 public:
   void setPeriod(uint64_t n) noexcept { m_period = n; }
-  void logIfDue(const CpuProfiler &cpu, const VkGpuProfiler &gpu) noexcept;
+  void logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
+                   const UploadProfiler &upload) noexcept;
 
 private:
+  bool shouldLog() noexcept;
+  void logCpu(const CpuProfiler &cpu) noexcept;
+  void logGpu(const VkGpuProfiler &gpu) noexcept;
+  void logUpload(const UploadProfiler &upload) noexcept;
+
   uint64_t m_frameCounter = 0;
   uint64_t m_period = 120;
 };

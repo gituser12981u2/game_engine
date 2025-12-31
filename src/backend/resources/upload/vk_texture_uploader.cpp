@@ -1,5 +1,6 @@
 #include "vk_texture_uploader.hpp"
 
+#include "backend/profiling/upload_profiler.hpp"
 #include "backend/resources/buffers/vk_buffer.hpp"
 #include "backend/resources/textures/vk_texture.hpp"
 #include "backend/resources/textures/vk_texture_utils.hpp"
@@ -10,7 +11,8 @@
 #include <vulkan/vulkan_core.h>
 
 bool VkTextureUploader::init(VmaAllocator allocator, VkDevice device,
-                             VkQueue queue, VkCommands *commands) {
+                             VkQueue queue, VkCommands *commands,
+                             UploadProfiler *profiler) {
   if (allocator == nullptr || device == VK_NULL_HANDLE ||
       queue == VK_NULL_HANDLE || commands == nullptr) {
     std::cerr << "[TextureUpload] Invalid init args\n";
@@ -21,6 +23,7 @@ bool VkTextureUploader::init(VmaAllocator allocator, VkDevice device,
   m_device = device;
   m_queue = queue;
   m_commands = commands;
+  m_profiler = profiler;
 
   return true;
 }
@@ -30,6 +33,7 @@ void VkTextureUploader::shutdown() noexcept {
   m_device = VK_NULL_HANDLE;
   m_queue = VK_NULL_HANDLE;
   m_commands = nullptr;
+  m_profiler = nullptr;
 }
 
 static VkImageMemoryBarrier makeImageBarrier(VkImage image,
@@ -112,9 +116,20 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
     return false;
   }
 
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedBytes,
+                byteSize);
+  }
+
   if (!staging.upload(rgbaPixels, byteSize)) {
     std::cerr << "[TextureUpload] Failed to uploader staging data\n";
     return false;
+  }
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, byteSize);
   }
 
   out.shutdown();
@@ -151,6 +166,12 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &region);
 
+        if (m_profiler != nullptr) {
+          profilerAdd(m_profiler, UploadProfiler::Stat::TextureUploadCount, 1);
+          profilerAdd(m_profiler, UploadProfiler::Stat::TextureUploadBytes,
+                      byteSize);
+        }
+
         cmdTransitionImage(cmd, out.image.handle(),
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -160,6 +181,10 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
     std::cerr << "[TextureUpload] submitImmediate failed\n";
     out.shutdown();
     return false;
+  }
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::UploadSubmitCount, 1);
   }
 
   out.device = m_device;

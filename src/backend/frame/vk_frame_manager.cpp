@@ -1,6 +1,6 @@
 #include "vk_frame_manager.hpp"
 
-#include "backend/profiling/profiler.hpp"
+#include "backend/profiling/cpu_profiler.hpp"
 
 #include <cstdint>
 #include <ctime>
