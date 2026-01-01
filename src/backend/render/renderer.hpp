@@ -15,6 +15,7 @@
 #include "backend/render/resources/resource_store.hpp"
 #include "backend/render/swapchain_attachments.hpp"
 #include "backend/resources/descriptors/vk_shader_interface.hpp"
+#include "backend/resources/upload/vk_instance_uploader.hpp"
 #include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/camera/camera_ubo.hpp"
 
@@ -76,7 +77,8 @@ public:
 
     // Rebind uploader's inside stores to this renderer's command context
     if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
-      (void)m_resources.rebind(*m_ctx, m_upload);
+      (void)m_resources.rebind(*m_ctx, m_uploadStatic);
+      (void)m_resources.rebind(*m_ctx, m_uploadFrame);
     }
 
     return *this;
@@ -137,9 +139,12 @@ private:
   FramebufferCache m_fbos;
 
   VkCommands m_commands;
-  VkUploadContext m_upload;
+  VkUploadContext m_uploadStatic;
+  VkUploadContext m_uploadFrame;
   VkFrameManager m_frames;
   PerFrameData m_perFrame;
+
+  VkInstanceUploader m_instanceUploader;
 
   ResourceStore m_resources;
 

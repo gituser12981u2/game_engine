@@ -149,6 +149,9 @@ void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
     return;
   }
 
+  // TODO: add rolling average over N frames and print that on N frame instead
+  // of just N frame data
+
   // NOTE: if queueSubmit is large its likely artifical wait time
   // for vsync from FIFO present mode in swapchain
 

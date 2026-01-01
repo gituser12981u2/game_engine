@@ -1,5 +1,9 @@
 #include "vk_shader_interface.hpp"
 
+#include "backend/render/push_constants.hpp"
+
+#include <array>
+#include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
@@ -20,10 +24,19 @@ bool VkShaderInterface::init(VkDevice device) {
   uboBinding.descriptorCount = 1;
   uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+  VkDescriptorSetLayoutBinding instanceBinding{};
+  instanceBinding.binding = 1;
+  instanceBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  instanceBinding.descriptorCount = 1;
+  instanceBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+  std::array<VkDescriptorSetLayoutBinding, 2> bindings{uboBinding,
+                                                       instanceBinding};
+
   VkDescriptorSetLayoutCreateInfo perFrameInfo{};
   perFrameInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  perFrameInfo.bindingCount = 1;
-  perFrameInfo.pBindings = &uboBinding;
+  perFrameInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+  perFrameInfo.pBindings = bindings.data();
 
   VkResult res = vkCreateDescriptorSetLayout(m_device, &perFrameInfo, nullptr,
                                              &m_setLayoutPerFrame);
@@ -57,11 +70,11 @@ bool VkShaderInterface::init(VkDevice device) {
     return false;
   }
 
-  // Push constant (mode matrix)
+  // Push constant (model matrix)
   VkPushConstantRange pushRange{};
   pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
   pushRange.offset = 0;
-  pushRange.size = sizeof(glm::mat4);
+  pushRange.size = sizeof(DrawPushConstants);
 
   std::array<VkDescriptorSetLayout, 2> setLayouts = {m_setLayoutPerFrame,
                                                      m_setLayoutMaterial};

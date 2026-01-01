@@ -2,31 +2,39 @@
 
 #include "backend/resources/buffers/vk_per_frame_uniform_buffers.hpp"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
 bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                          const VkPerFrameUniformBuffers &bufs) {
+                          const VkPerFrameUniformBuffers &bufs,
+                          VkBuffer instanceBuffer,
+                          VkDeviceSize instanceFrameStrideBytes) {
   if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE || !bufs.valid()) {
     std::cerr << "[PerFrameSets] init invalid args\n";
     return false;
   }
 
   shutdown();
+
   m_device = device;
 
   const uint32_t framesInFlight = bufs.frameCount();
 
-  VkDescriptorPoolSize poolSize{};
-  poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  poolSize.descriptorCount = framesInFlight;
+  std::array<VkDescriptorPoolSize, 2> poolSizes{};
+
+  poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  poolSizes[0].descriptorCount = framesInFlight;
+
+  poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  poolSizes[1].descriptorCount = framesInFlight;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   poolInfo.maxSets = framesInFlight;
-  poolInfo.poolSizeCount = 1;
-  poolInfo.pPoolSizes = &poolSize;
+  poolInfo.poolSizeCount = (uint32_t)poolSizes.size();
+  poolInfo.pPoolSizes = poolSizes.data();
 
   VkResult res = vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_pool);
   if (res != VK_SUCCESS) {
@@ -54,20 +62,34 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   // Write binding 0 for each frame
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = bufs.buffer(i).handle();
-    bufferInfo.offset = 0;
-    bufferInfo.range = bufs.stride();
+    VkDescriptorBufferInfo uboInfo{};
+    uboInfo.buffer = bufs.buffer(i).handle();
+    uboInfo.offset = 0;
+    uboInfo.range = bufs.stride();
 
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = m_sets[i];
-    write.dstBinding = 0;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    write.pBufferInfo = &bufferInfo;
+    VkDescriptorBufferInfo instanceInfo{};
+    instanceInfo.buffer = instanceBuffer;
+    instanceInfo.offset = VkDeviceSize(i) * instanceFrameStrideBytes;
+    instanceInfo.range = instanceFrameStrideBytes;
 
-    vkUpdateDescriptorSets(m_device, 1, &write, 0, nullptr);
+    std::array<VkWriteDescriptorSet, 2> writes{};
+
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = m_sets[i];
+    writes[0].dstBinding = 0;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[0].pBufferInfo = &uboInfo;
+
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = m_sets[i];
+    writes[1].dstBinding = 1;
+    writes[1].descriptorCount = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[1].pBufferInfo = &instanceInfo;
+
+    vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
+                           nullptr);
   }
 
   return true;

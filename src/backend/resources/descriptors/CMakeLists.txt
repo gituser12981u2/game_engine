@@ -15,6 +15,7 @@ target_link_libraries(quark_backend_resources_descriptors
         glm::glm
         quark::backend::resources::buffers
         quark::backend::resources::textures
+        quark::backend::render
 )
 
 add_library(quark::backend::resources::descriptors ALIAS quark_backend_resources_descriptors)

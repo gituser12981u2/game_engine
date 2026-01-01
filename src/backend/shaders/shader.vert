@@ -12,12 +12,20 @@ layout(set = 0, binding = 0) uniform CameraUBO {
   mat4 proj;
 } camera;
 
+// instance data
+layout(set = 0, binding = 1) readonly buffer InstanceSSBO {
+  mat4 model[];
+} inst;
+
 layout(push_constant) uniform Push {
-  mat4 model;
+  uint baseInstance;
 } push;
 
 void main() {
-  gl_Position = camera.proj * camera.view * push.model * vec4(inPos, 1.0);
+  uint idx = push.baseInstance + gl_InstanceIndex;
+  mat4 M = inst.model[idx];
+
+  gl_Position = camera.proj * camera.view * M * vec4(inPos, 1.0);
   v_uv = inUV;
   vColor = inColor;
 }

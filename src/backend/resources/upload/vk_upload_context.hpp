@@ -50,8 +50,10 @@ public:
     m_staging = std::move(other.m_staging);
     m_stagingMapped = std::exchange(other.m_stagingMapped, nullptr);
 
-    m_pools = std::exchange(other.m_pools, VK_NULL_HANDLE);
-    m_cmds = std::exchange(other.m_cmds, VK_NULL_HANDLE);
+    m_pools = std::exchange(other.m_pools, nullptr);
+    m_cmds = std::exchange(other.m_cmds, nullptr);
+    m_pool = std::exchange(other.m_pool, VK_NULL_HANDLE);
+    m_cmd = std::exchange(other.m_cmd, VK_NULL_HANDLE);
 
     m_fences = std::exchange(other.m_fences, nullptr);
 
@@ -82,6 +84,10 @@ public:
   // UNDEFINED -> TRANSFER_DST_OPTIMAL -> finalLayout
   void cmdUploadRGBA8ToImage(VkImage image, uint32_t width, uint32_t height,
                              VkDeviceSize srcOffset, VkImageLayout finalLayout);
+
+  void cmdBarrierBufferTransferToVertexShader(VkBuffer buffer,
+                                              VkDeviceSize offset,
+                                              VkDeviceSize size);
 
   // If wait=true, wait for completion.
   bool flush(bool wait);

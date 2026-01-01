@@ -31,7 +31,8 @@ public:
   }
 
   bool init(VkDevice device, VkDescriptorSetLayout layout,
-            const VkPerFrameUniformBuffers &bufs);
+            const VkPerFrameUniformBuffers &uboBufs, VkBuffer instanceBuffer,
+            VkDeviceSize instanceFrameStrideBytes);
   void shutdown() noexcept;
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,

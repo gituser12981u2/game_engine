@@ -17,6 +17,7 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
+// TODO: fix bad API
 class UploadScope {
 public:
   UploadScope(Renderer &r, uint32_t frameIndex) : m_r(&r), m_ok(false) {
@@ -34,6 +35,32 @@ private:
   bool m_ok;
 };
 
+static void pushCubeGrid(std::vector<DrawItem> &out, MeshHandle mesh,
+                         uint32_t material, uint32_t cubeCount, float spacing,
+                         float t) {
+  const uint32_t gridW = uint32_t(std::ceil(std::sqrt(double(cubeCount))));
+  const uint32_t gridH = (cubeCount + gridW - 1) / gridW;
+
+  out.reserve(out.size() + cubeCount);
+
+  for (uint32_t i = 0; i < cubeCount; ++i) {
+    const uint32_t x = i % gridW;
+    const uint32_t z = i / gridW;
+
+    const float fx = (float(x) - float(gridW - 1) * 0.5F) * spacing;
+    const float fz = (float(z) - float(gridH - 1) * 0.5F) * spacing;
+
+    const float r = (t * 0.7F) + (float(i) * 0.001F);
+
+    DrawItem item{};
+    item.mesh = mesh;
+    item.material = material;
+    item.model = engine::makeModel({fx, 0.0F, fz}, {0.0F, r, 0.0F});
+
+    out.push_back(item);
+  }
+}
+
 int main() {
   EngineApp app;
   AppConfig cfg{};
@@ -48,12 +75,12 @@ int main() {
   CameraController controller(app.window(), &camera);
   controller.enableCursorCapture(true);
 
-  engine::assets::GltfLoadOptions opt{};
-  opt.flipTexcoordV = true;
-  opt.axis.yUpToZUp = true;
-  opt.axis.flipAxisZ = true;
+  // engine::assets::GltfLoadOptions opt{};
+  // opt.flipTexcoordV = true;
+  // opt.axis.yUpToZUp = true;
+  // opt.axis.flipAxisZ = true;
 
-  engine::assets::GltfAsset tree;
+  // engine::assets::GltfAsset tree;
   MeshHandle cube{};
 
   TextureHandle texture{};
@@ -66,17 +93,18 @@ int main() {
     }
 
     cube = app.meshes().cube();
-    engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
+    // engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree,
+    // opt);
 
     texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
     material = app.renderer().createMaterialFromTexture(texture);
   }
 
-  // const uint32_t cubeCount = 10'000;
-  // const float spacing = 2.5F;
-  // const uint32_t gridW =
-  //     static_cast<uint32_t>(std::ceil(std::sqrt((double)cubeCount)));
-  // const uint32_t gridH = (cubeCount + gridW - 1) / gridW;
+  std::vector<DrawItem> draw;
+  const uint32_t cubeCount = 10'000;
+  draw.reserve(cubeCount);
+  // draw.reserve(tree.drawItems.size() + 2);
+  // draw.reserve(2);
 
   app.run([&](float dt) {
     controller.update(dt);
@@ -85,50 +113,22 @@ int main() {
 
     const float t = (float)glfwGetTime();
 
-    std::vector<DrawItem> draw;
-    draw.reserve(tree.drawItems.size() + 2);
-    // draw.reserve(2);
-
-    // draw.resize(cubeCount);
-
-    // for (uint32_t i = 0; i < cubeCount; ++i) {
-    //   draw[i].mesh = cube;
-    //   draw[i].material = material;
-    //   draw[i].model = glm::mat4(1.0F);
-    // }
-
-    // for (uint32_t i = 0; i < cubeCount; ++i) {
-    //   const uint32_t x = i % gridW;
-    //   const uint32_t z = i / gridW;
+    // DrawItem cubeA{};
+    // cubeA.mesh = cube;
+    // cubeA.material = material;
+    // cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
+    // draw.push_back(cubeA);
     //
-    //   // center grid around origin
-    //   const float fx =
-    //       (static_cast<float>(x) - static_cast<float>(gridW - 1) * 0.5f) *
-    //       spacing;
-    //   const float fz =
-    //       (static_cast<float>(z) - static_cast<float>(gridH - 1) * 0.5f) *
-    //       spacing;
-    //
-    //   // small per-cube rotation variation based on index
-    //   const float r = t * 0.7F + static_cast<float>(i) * 0.001F;
-    //
-    //   draw[i].model = engine::makeModel({fx, 0.0F, fz}, {0.0F, r, 0.0f});
-    // }
+    // DrawItem cubeB{};
+    // cubeB.mesh = cube;
+    // cubeB.material = material;
+    // cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
+    // draw.push_back(cubeB);
 
-    DrawItem cubeA{};
-    cubeA.mesh = cube;
-    cubeA.material = material;
-    cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
-    draw.push_back(cubeA);
+    // draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
 
-    // TODO: add instances
-    DrawItem cubeB{};
-    cubeB.mesh = cube;
-    cubeB.material = material;
-    cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
-    draw.push_back(cubeB);
-
-    draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
+    draw.clear();
+    pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
 
     (void)app.renderer().drawFrame(app.presenter(), draw);
   });

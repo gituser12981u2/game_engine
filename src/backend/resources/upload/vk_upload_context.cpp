@@ -325,6 +325,27 @@ static VkImageMemoryBarrier makeImageBarrier(VkImage image,
   return imageBarrier;
 }
 
+void VkUploadContext::cmdBarrierBufferTransferToVertexShader(
+    VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
+  if (!m_recording) {
+    return;
+  }
+
+  VkBufferMemoryBarrier bufBarrier{};
+  bufBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  bufBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  bufBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  bufBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  bufBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  bufBarrier.buffer = buffer;
+  bufBarrier.offset = offset;
+  bufBarrier.size = size;
+
+  vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1,
+                       &bufBarrier, 0, nullptr);
+}
+
 void VkUploadContext::transitionImage(VkImage image, VkImageLayout oldLayout,
                                       VkImageLayout newLayout) {
   VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
