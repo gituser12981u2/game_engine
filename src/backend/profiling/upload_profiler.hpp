@@ -15,13 +15,16 @@ public:
     UploadMemcpyBytes,
 
     StagingCreatedCount,
-    StagingCreatedBytes,
+    StagingAllocatedBytes,
+    StagingUsedBytes,
 
     BufferUploadCount,
     BufferUploadBytes,
+    BufferAllocatedBytes,
 
     TextureUploadCount,
     TextureUploadBytes,
+    TextureAllocatedBytes,
 
     Count
   };
@@ -50,16 +53,22 @@ public:
       return "UploadMemcpyBytes";
     case Stat::StagingCreatedCount:
       return "StagingCreatedCount";
-    case Stat::StagingCreatedBytes:
-      return "StagingCreatedBytes";
+    case Stat::StagingUsedBytes:
+      return "StagingUsedBytes";
+    case Stat::StagingAllocatedBytes:
+      return "StatingAllocatedBytes";
     case Stat::BufferUploadCount:
       return "BufferUploadCount";
     case Stat::BufferUploadBytes:
       return "BufferUploadBytes";
+    case Stat::BufferAllocatedBytes:
+      return "StatingAllocatedBytes";
     case Stat::TextureUploadCount:
       return "TextureUploadCount";
     case Stat::TextureUploadBytes:
       return "TextureUploadBytes";
+    case Stat::TextureAllocatedBytes:
+      return "TextureAllocatedBytes";
     default:
       return "Unknown";
     }

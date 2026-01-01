@@ -1,12 +1,13 @@
 #include "backend/render/resources/material_system.hpp"
 
 #include "backend/profiling/upload_profiler.hpp"
+#include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/assets/stb_image/stb_image_loader.hpp"
 
 #include <cstdint>
 #include <iostream>
 
-bool MaterialSystem::init(VkBackendCtx &ctx, class VkCommands &commands,
+bool MaterialSystem::init(VkBackendCtx &ctx, VkUploadContext &upload,
                           VkDescriptorSetLayout materialSetLayout,
                           uint32_t maxMaterials, UploadProfiler *profiler) {
   shutdown();
@@ -16,8 +17,7 @@ bool MaterialSystem::init(VkBackendCtx &ctx, class VkCommands &commands,
   VkDevice device = ctx.device();
   VmaAllocator allocator = ctx.allocator();
 
-  if (!m_textureUploader.init(allocator, device, ctx.graphicsQueue(), &commands,
-                              m_uploaderProfiler)) {
+  if (!m_textureUploader.init(allocator, device, &upload, m_uploaderProfiler)) {
     std::cerr << "[MaterialSystem] Failed to init texture uploader\n";
     shutdown();
     return false;

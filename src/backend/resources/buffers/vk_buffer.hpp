@@ -42,6 +42,9 @@ public:
   [[nodiscard]] bool valid() const noexcept {
     return m_buffer != VK_NULL_HANDLE;
   }
+  [[nodiscard]] VmaAllocation allocation() const noexcept {
+    return m_allocation;
+  }
 
 private:
   VmaAllocator m_allocator = nullptr;       // non-owning

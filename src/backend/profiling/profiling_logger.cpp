@@ -47,7 +47,7 @@ bool FrameLogger::shouldLog() noexcept {
   return (m_frameCounter % m_period) == 0ULL;
 }
 
-void FrameLogger::logCpu(const CpuProfiler &cpu) noexcept {
+static void logCpu(const CpuProfiler &cpu) noexcept {
   const auto &st = cpu.last();
 
   std::cerr << "\n[Profiler]\n CPU ms: frame="
@@ -67,7 +67,7 @@ void FrameLogger::logCpu(const CpuProfiler &cpu) noexcept {
             << " descBinds=" << st.descriptorBinds << "\n";
 }
 
-void FrameLogger::logGpu(const VkGpuProfiler &gpu) noexcept {
+static void logGpu(const VkGpuProfiler &gpu) noexcept {
   const auto &gst = gpu.last();
   if (gst.valid) {
     std::cerr << " gpuFrame=" << gst.frameMs
@@ -76,7 +76,7 @@ void FrameLogger::logGpu(const VkGpuProfiler &gpu) noexcept {
   }
 }
 
-void FrameLogger::logUpload(const UploadProfiler &upload) noexcept {
+static void logUpload(const UploadProfiler &upload) noexcept {
   const auto &ust = upload.last();
   const auto idx = [](UploadProfiler::Stat stat) {
     return static_cast<std::size_t>(stat);
@@ -84,39 +84,62 @@ void FrameLogger::logUpload(const UploadProfiler &upload) noexcept {
 
   const std::uint64_t submitCount =
       ust.v[idx(UploadProfiler::Stat::UploadSubmitCount)];
+
   const std::uint64_t memcpyCount =
       ust.v[idx(UploadProfiler::Stat::UploadMemcpyCount)];
   const std::uint64_t memcpyBytes =
       ust.v[idx(UploadProfiler::Stat::UploadMemcpyBytes)];
-  const std::uint64_t stagingCount =
+
+  const std::uint64_t stagingCreatedCount =
       ust.v[idx(UploadProfiler::Stat::StagingCreatedCount)];
-  const std::uint64_t stagingBytes =
-      ust.v[idx(UploadProfiler::Stat::StagingCreatedBytes)];
+  const std::uint64_t stagingAllocBytes =
+      ust.v[idx(UploadProfiler::Stat::StagingAllocatedBytes)];
+  const std::uint64_t stagingUsedBytes =
+      ust.v[idx(UploadProfiler::Stat::StagingUsedBytes)];
+
   const std::uint64_t bufCount =
       ust.v[idx(UploadProfiler::Stat::BufferUploadCount)];
   const std::uint64_t bufBytes =
       ust.v[idx(UploadProfiler::Stat::BufferUploadBytes)];
+  const std::uint64_t bufAllocBytes =
+      ust.v[idx(UploadProfiler::Stat::BufferAllocatedBytes)];
+
   const std::uint64_t texCount =
       ust.v[idx(UploadProfiler::Stat::TextureUploadCount)];
   const std::uint64_t texBytes =
       ust.v[idx(UploadProfiler::Stat::TextureUploadBytes)];
+  const std::uint64_t texAllocBytes =
+      ust.v[idx(UploadProfiler::Stat::TextureAllocatedBytes)];
 
   std::array<char, 32> memcpyStr{};
-  std::array<char, 32> stagingStr{};
+  std::array<char, 32> stagingAllocStr{};
+  std::array<char, 32> stagingUsedStr{};
   std::array<char, 32> bufStr{};
+  std::array<char, 32> bufAllocStr{};
   std::array<char, 32> texStr{};
+  std::array<char, 32> texAllocStr{};
 
   formatBytes(memcpyStr.data(), sizeof(memcpyStr), memcpyBytes);
-  formatBytes(stagingStr.data(), sizeof(stagingStr), stagingBytes);
+  formatBytes(stagingAllocStr.data(), sizeof(stagingAllocStr),
+              stagingAllocBytes);
+  formatBytes(stagingUsedStr.data(), sizeof(stagingUsedStr), stagingUsedBytes);
   formatBytes(bufStr.data(), sizeof(bufStr), bufBytes);
+  formatBytes(bufAllocStr.data(), sizeof(bufAllocStr), bufAllocBytes);
   formatBytes(texStr.data(), sizeof(texStr), texBytes);
+  formatBytes(texAllocStr.data(), sizeof(texAllocStr), texAllocBytes);
 
   // If prints show 0 here, its likely the scene if only static meshes
-  std::cerr << " submits=" << submitCount << " staging=(" << stagingCount << ","
-            << stagingStr.data() << ")"
-            << " memcpy=(" << memcpyCount << "," << memcpyStr.data() << ")"
-            << " buf=(" << bufCount << "," << bufStr.data() << ")"
-            << " tex=(" << texCount << "," << texStr.data() << ")\n";
+  std::cerr << " submits=" << submitCount
+            << " staging=(created=" << stagingCreatedCount
+            << " alloc=" << stagingAllocStr.data()
+            << " used=" << stagingUsedStr.data() << ")"
+            << " memcpy=(count=" << memcpyCount << " size=" << memcpyStr.data()
+            << ")"
+            << " buf=(uploads=" << bufCount << " bytes=" << bufStr.data()
+            << " alloc=" << bufAllocStr.data() << ")"
+            << " tex=(uploads=" << texCount << " bytes=" << texStr.data()
+            << " alloc=" << texAllocStr.data() << ")"
+            << "\n";
 }
 
 void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,

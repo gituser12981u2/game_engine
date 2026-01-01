@@ -1,11 +1,11 @@
 #pragma once
 
 #include "backend/core/vk_backend_ctx.hpp"
-#include "backend/frame/vk_commands.hpp"
 #include "backend/profiling/upload_profiler.hpp"
 #include "backend/resources/descriptors/vk_material_sets.hpp"
 #include "backend/resources/textures/vk_texture.hpp"
 #include "backend/resources/upload/vk_texture_uploader.hpp"
+#include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/assets/image_data.hpp"
 
 #include <cstdint>
@@ -17,7 +17,7 @@ struct TextureHandle {
 class MaterialSystem {
 public:
   // TODO: make maxMaterials dynamic
-  bool init(VkBackendCtx &ctx, class VkCommands &commands,
+  bool init(VkBackendCtx &ctx, VkUploadContext &upload,
             VkDescriptorSetLayout materialSetLayout,
             uint32_t maxMaterials = 128, UploadProfiler *profiler = nullptr);
   void shutdown() noexcept;
@@ -36,9 +36,8 @@ public:
 
   [[nodiscard]] uint32_t resolveMaterial(uint32_t overrideMaterial) const;
 
-  bool rebind(VkBackendCtx &ctx, VkCommands &commands) {
-    return m_textureUploader.init(ctx.allocator(), ctx.device(),
-                                  ctx.graphicsQueue(), &commands,
+  bool rebind(VkBackendCtx &ctx, VkUploadContext &upload) {
+    return m_textureUploader.init(ctx.allocator(), ctx.device(), &upload,
                                   m_uploaderProfiler);
   }
 

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/core/vk_backend_ctx.hpp"
-#include "backend/frame/vk_commands.hpp"
 #include "backend/profiling/upload_profiler.hpp"
 #include "backend/resources/upload/vk_buffer_uploader.hpp"
+#include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/mesh/mesh_data.hpp"
 #include "engine/mesh/vertex.hpp"
 #include "mesh_gpu.hpp"
@@ -17,7 +17,7 @@ struct MeshHandle {
 
 class MeshStore {
 public:
-  bool init(VkBackendCtx &ctx, class VkCommands &commands,
+  bool init(VkBackendCtx &ctx, VkUploadContext &upload,
             UploadProfiler *profiler);
   void shutdown() noexcept;
 
@@ -27,13 +27,12 @@ public:
 
   [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
 
-  bool rebind(VkBackendCtx &ctx, VkCommands &commands) {
-    return m_uploader.init(ctx.allocator(), ctx.graphicsQueue(), &commands,
-                           m_uploaderProfiler);
+  bool rebind(VkBackendCtx &ctx, VkUploadContext &upload) {
+    return m_uploader.init(ctx.allocator(), &upload, m_uploaderProfiler);
   }
 
 private:
   std::vector<MeshGpu> m_meshes;
-  VkBufferUploader m_uploader;
+  VkBufferUploader m_uploader;                  // non-owning;
   UploadProfiler *m_uploaderProfiler = nullptr; // non-owning
 };

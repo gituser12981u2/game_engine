@@ -20,9 +20,6 @@ public:
 
 private:
   bool shouldLog() noexcept;
-  void logCpu(const CpuProfiler &cpu) noexcept;
-  void logGpu(const VkGpuProfiler &gpu) noexcept;
-  void logUpload(const UploadProfiler &upload) noexcept;
 
   uint64_t m_frameCounter = 0;
   uint64_t m_period = 120;

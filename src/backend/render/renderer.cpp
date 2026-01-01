@@ -86,14 +86,38 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
+  // 8 MiB per frame for now
+  static constexpr VkDeviceSize kUploadBudgetPerFrame =
+      8ULL * 1024ULL * 1024ULL;
+
+  if (!m_upload.init(*m_ctx, m_framesInFlight, kUploadBudgetPerFrame,
+                     &m_uploadProfiler)) {
+    std::cerr << "[Renderer] Failed to init upload context\n";
+    shutdown();
+    return false;
+  }
+
+  if (!m_upload.beginFrame(0)) {
+    std::cerr << "[Renderer] Failed to begin init upload frame\n";
+    shutdown();
+    return false;
+  }
+
   if (!m_perFrame.init(*m_ctx, m_framesInFlight, m_interface)) {
     std::cerr << "[Renderer] Failed to init per-frame data\n";
     shutdown();
     return false;
   }
 
-  if (!m_resources.init(*m_ctx, m_commands, m_interface, &m_uploadProfiler)) {
+  if (!m_resources.init(*m_ctx, m_upload, m_interface, &m_uploadProfiler)) {
     std::cerr << "[Renderer] Failed to init resource store\n";
+    shutdown();
+    return false;
+  }
+
+  // Submit + wait for default material
+  if (!m_upload.flush(false)) {
+    std::cerr << "[Renderer] Failed to flush init uploads\n";
     shutdown();
     return false;
   }
@@ -110,9 +134,6 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     shutdown();
     return false;
   }
-
-  // m_uploadProfiler.endFrame();
-  // profiling::logUploadOnce("ResourceStore init", m_uploadProfiler);
 
   return true;
 }
@@ -131,6 +152,7 @@ void Renderer::shutdown() noexcept {
   // Commands-dependents
   m_frames.shutdown();
   m_resources.shutdown();
+  m_upload.shutdown();
   m_commands.shutdown();
 
   m_perFrame.shutdown();
@@ -291,6 +313,11 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
 
+  if (!m_upload.beginFrame(frameIndex)) {
+    std::cerr << "[Renderer] Failed to begin upload frames\n";
+    return false;
+  }
+
   {
     CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::UpdatePerFrameUBO);
     (void)m_perFrame.update(frameIndex, m_cameraUbo);
@@ -302,6 +329,11 @@ bool Renderer::drawFrame(VkPresenter &presenter,
   {
     CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::RecordCmd);
     recordFrame(cmd, m_fbos.at(imageIndex), presenter.swapchainExtent(), items);
+  }
+
+  if (!m_upload.flush(false)) {
+    std::cerr << "[Renderer] Failed to flush uploads\n";
+    return false;
   }
 
   FrameStatus sub = m_frames.submit(
@@ -398,3 +430,9 @@ bool Renderer::createTextureFromImage(const engine::ImageData &img,
 void Renderer::setActiveMaterial(uint32_t materialIndex) {
   m_resources.materials().setActiveMaterial(materialIndex);
 }
+
+bool Renderer::beginUpload(uint32_t frameIndex) {
+  return m_upload.beginFrame(frameIndex);
+}
+
+bool Renderer::endUpload(bool wait) { return m_upload.flush(wait); }

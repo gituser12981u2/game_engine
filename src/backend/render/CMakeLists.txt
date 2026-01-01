@@ -20,6 +20,7 @@ target_link_libraries(quark_backend_render
         quark::backend::graphics
         quark::backend::core
         quark::backend::resources::descriptors
+        quark::backend::resources::upload
         quark::backend::profiling
         quark::backend::render::resources
         quark::engine::camera

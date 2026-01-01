@@ -1,5 +1,7 @@
 #include "backend/presentation/vk_presenter.hpp"
 #include "backend/render/renderer.hpp"
+#include "backend/render/resources/material_system.hpp"
+#include "backend/render/resources/mesh_store.hpp"
 #include "engine/app/app.hpp"
 #include "engine/assets/gltf/gltf_asset.hpp"
 #include "engine/camera/camera.hpp"
@@ -7,12 +9,30 @@
 #include "platform/input/camera_controller.hpp"
 
 #include <GLFW/glfw3.h>
+#include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <iostream>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+class UploadScope {
+public:
+  UploadScope(Renderer &r, uint32_t frameIndex) : m_r(&r), m_ok(false) {
+    m_ok = m_r->beginUpload(frameIndex);
+  }
+  ~UploadScope() {
+    if (m_ok) {
+      (void)m_r->endUpload(/*wait=*/false);
+    }
+  }
+  explicit operator bool() const noexcept { return m_ok; }
+
+private:
+  Renderer *m_r;
+  bool m_ok;
+};
 
 int main() {
   EngineApp app;
@@ -34,12 +54,23 @@ int main() {
   opt.axis.flipAxisZ = true;
 
   engine::assets::GltfAsset tree;
-  engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
+  MeshHandle cube{};
 
-  auto cube = app.meshes().cube();
+  TextureHandle texture{};
+  uint32_t material = UINT32_MAX;
 
-  auto texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
-  uint32_t material = app.renderer().createMaterialFromTexture(texture);
+  {
+    UploadScope up(app.renderer(), 0);
+    if (!up) {
+      std::cerr << "Failed to begin upload\n";
+    }
+
+    cube = app.meshes().cube();
+    engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
+
+    texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
+    material = app.renderer().createMaterialFromTexture(texture);
+  }
 
   // const uint32_t cubeCount = 10'000;
   // const float spacing = 2.5F;
@@ -58,7 +89,6 @@ int main() {
     draw.reserve(tree.drawItems.size() + 2);
     // draw.reserve(2);
 
-    // std::vector<DrawItem> draw;
     // draw.resize(cubeCount);
 
     // for (uint32_t i = 0; i < cubeCount; ++i) {

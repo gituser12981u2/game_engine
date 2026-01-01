@@ -15,6 +15,7 @@
 #include "backend/render/resources/resource_store.hpp"
 #include "backend/render/swapchain_attachments.hpp"
 #include "backend/resources/descriptors/vk_shader_interface.hpp"
+#include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/camera/camera_ubo.hpp"
 
 #include <cstdint>
@@ -75,7 +76,7 @@ public:
 
     // Rebind uploader's inside stores to this renderer's command context
     if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
-      (void)m_resources.rebind(*m_ctx, m_commands);
+      (void)m_resources.rebind(*m_ctx, m_upload);
     }
 
     return *this;
@@ -109,6 +110,9 @@ public:
   uint32_t createMaterialFromTexture(TextureHandle textureHandle);
   void setActiveMaterial(uint32_t materialIndex);
 
+  bool beginUpload(uint32_t frameIndex);
+  bool endUpload(bool wait);
+
 private:
   bool createDefaultMaterial() noexcept;
 
@@ -133,6 +137,7 @@ private:
   FramebufferCache m_fbos;
 
   VkCommands m_commands;
+  VkUploadContext m_upload;
   VkFrameManager m_frames;
   PerFrameData m_perFrame;
 
