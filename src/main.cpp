@@ -75,12 +75,11 @@ int main() {
   CameraController controller(app.window(), &camera);
   controller.enableCursorCapture(true);
 
-  // engine::assets::GltfLoadOptions opt{};
-  // opt.flipTexcoordV = true;
-  // opt.axis.yUpToZUp = true;
-  // opt.axis.flipAxisZ = true;
+  engine::assets::GltfLoadOptions opt{};
+  opt.flipTexcoordV = true;
+  opt.axis.yUpToZUp = true;
 
-  // engine::assets::GltfAsset tree;
+  engine::assets::GltfAsset tree;
   MeshHandle cube{};
 
   TextureHandle texture{};
@@ -93,17 +92,16 @@ int main() {
     }
 
     cube = app.meshes().cube();
-    // engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree,
-    // opt);
+    engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
 
     texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
     material = app.renderer().createMaterialFromTexture(texture);
   }
 
   std::vector<DrawItem> draw;
-  const uint32_t cubeCount = 10'000;
-  draw.reserve(cubeCount);
-  // draw.reserve(tree.drawItems.size() + 2);
+  // const uint32_t cubeCount = 10'000;
+  // draw.reserve(cubeCount);
+  draw.reserve(tree.drawItems.size() + 2);
   // draw.reserve(2);
 
   app.run([&](float dt) {
@@ -112,23 +110,24 @@ int main() {
         camera.makeUbo(app.presenter().swapchainExtent()));
 
     const float t = (float)glfwGetTime();
-
-    // DrawItem cubeA{};
-    // cubeA.mesh = cube;
-    // cubeA.material = material;
-    // cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
-    // draw.push_back(cubeA);
-    //
-    // DrawItem cubeB{};
-    // cubeB.mesh = cube;
-    // cubeB.material = material;
-    // cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
-    // draw.push_back(cubeB);
-
-    // draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
-
     draw.clear();
-    pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
+
+    DrawItem cubeA{};
+    cubeA.mesh = cube;
+    cubeA.material = material;
+    cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
+    draw.push_back(cubeA);
+
+    DrawItem cubeB{};
+    cubeB.mesh = cube;
+    cubeB.material = material;
+    cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
+    draw.push_back(cubeB);
+
+    draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
+
+    // draw.clear();
+    // pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
 
     (void)app.renderer().drawFrame(app.presenter(), draw);
   });

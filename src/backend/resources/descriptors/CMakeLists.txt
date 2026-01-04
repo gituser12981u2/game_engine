@@ -1,6 +1,6 @@
 add_library(quark_backend_resources_descriptors STATIC 
     vk_material_sets.cpp
-    vk_per_frame_sets.cpp
+    vk_scene_sets.cpp
     vk_shader_interface.cpp
 )
 

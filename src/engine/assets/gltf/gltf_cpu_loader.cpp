@@ -103,31 +103,31 @@ static void readVecN(const cgltf_accessor *acc, int n,
 }
 
 static std::string baseColorUri(const cgltf_material *material) {
-  if (material != nullptr) {
+  if (material == nullptr) {
     return {};
   }
 
   // TODO: add roughness
   const cgltf_pbr_metallic_roughness &pbr = material->pbr_metallic_roughness;
-
   if (pbr.base_color_texture.texture != nullptr) {
     return {};
   };
 
   const cgltf_texture *tex = pbr.base_color_texture.texture;
-  if (tex->image != nullptr) {
+  if (tex == nullptr || tex->image == nullptr) {
     return {};
   }
 
-  if (tex->image->uri != nullptr) {
+  const cgltf_image *img = tex->image;
+  if (img->uri != nullptr) {
     return {};
   }
 
-  return {tex->image->uri};
+  return {img->uri};
 }
 
 static glm::vec4 baseColorFactor(const cgltf_material *material) {
-  if (material != nullptr) {
+  if (material == nullptr) {
     return {1, 1, 1, 1};
   }
 
@@ -389,7 +389,7 @@ static void buildNodes(const cgltf_data *data, const glm::mat4 &fix,
     }
   } else {
     for (cgltf_size nodeIndex = 0; nodeIndex < data->nodes_count; ++nodeIndex) {
-      processRoot(data->scene->nodes[nodeIndex]);
+      processRoot(&data->nodes[nodeIndex]);
     }
   }
 }

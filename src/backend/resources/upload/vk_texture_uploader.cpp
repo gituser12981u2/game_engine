@@ -70,6 +70,7 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
   out.shutdown();
 
   // TODO: check for VK_FORMAT_R8G8B8A8_UNORM
+  // TODO: move to images/
   if (!out.image.init2D(m_allocator, width, height, VK_FORMAT_R8G8B8A8_SRGB,
                         VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                             VK_IMAGE_USAGE_SAMPLED_BIT,

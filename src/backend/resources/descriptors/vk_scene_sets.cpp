@@ -1,4 +1,4 @@
-#include "vk_per_frame_sets.hpp"
+#include "backend/resources/descriptors/vk_scene_sets.hpp"
 
 #include "backend/resources/buffers/vk_per_frame_uniform_buffers.hpp"
 
@@ -7,11 +7,15 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                          const VkPerFrameUniformBuffers &bufs,
-                          VkBuffer instanceBuffer,
-                          VkDeviceSize instanceFrameStrideBytes) {
-  if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE || !bufs.valid()) {
+bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
+                       const VkPerFrameUniformBuffers &bufs,
+                       VkBuffer instanceBuffer,
+                       VkDeviceSize instanceFrameStrideBytes,
+                       VkBuffer materialBuffer,
+                       VkDeviceSize materialTableBytes) {
+  if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE || !bufs.valid() ||
+      instanceBuffer == VK_NULL_HANDLE || instanceFrameStrideBytes == 0 ||
+      materialBuffer == VK_NULL_HANDLE || materialTableBytes == 0) {
     std::cerr << "[PerFrameSets] init invalid args\n";
     return false;
   }
@@ -28,7 +32,7 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
   poolSizes[0].descriptorCount = framesInFlight;
 
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  poolSizes[1].descriptorCount = framesInFlight;
+  poolSizes[1].descriptorCount = framesInFlight * 2; // instance + materials
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -60,7 +64,13 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
     return false;
   }
 
-  // Write binding 0 for each frame
+  // Global material table
+  VkDescriptorBufferInfo materialInfo{};
+  materialInfo.buffer = materialBuffer;
+  materialInfo.offset = 0;
+  materialInfo.range = materialTableBytes;
+
+  // Write set 0 bindings for each frame
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     VkDescriptorBufferInfo uboInfo{};
     uboInfo.buffer = bufs.buffer(i).handle();
@@ -72,8 +82,9 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
     instanceInfo.offset = VkDeviceSize(i) * instanceFrameStrideBytes;
     instanceInfo.range = instanceFrameStrideBytes;
 
-    std::array<VkWriteDescriptorSet, 2> writes{};
+    std::array<VkWriteDescriptorSet, 3> writes{};
 
+    // binding 0: camera UBO
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = m_sets[i];
     writes[0].dstBinding = 0;
@@ -81,12 +92,21 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[0].pBufferInfo = &uboInfo;
 
+    // binding 1: instance SSBO
     writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[1].dstSet = m_sets[i];
     writes[1].dstBinding = 1;
     writes[1].descriptorCount = 1;
     writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[1].pBufferInfo = &instanceInfo;
+
+    // binding 2: material table SSBO
+    writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[2].dstSet = m_sets[i];
+    writes[2].dstBinding = 2;
+    writes[2].descriptorCount = 1;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[2].pBufferInfo = &materialInfo;
 
     vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
                            nullptr);
@@ -95,7 +115,7 @@ bool VkPerFrameSets::init(VkDevice device, VkDescriptorSetLayout layout,
   return true;
 }
 
-void VkPerFrameSets::shutdown() noexcept {
+void VkSceneSets::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE && m_pool != VK_NULL_HANDLE) {
     vkDestroyDescriptorPool(m_device, m_pool, nullptr);
   }
@@ -105,8 +125,8 @@ void VkPerFrameSets::shutdown() noexcept {
   m_device = VK_NULL_HANDLE;
 }
 
-void VkPerFrameSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
-                          uint32_t setIndex, uint32_t frameIndex) const {
+void VkSceneSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
+                       uint32_t setIndex, uint32_t frameIndex) const {
   if (frameIndex >= m_sets.size()) {
     return;
   }

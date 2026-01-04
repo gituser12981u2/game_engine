@@ -2,6 +2,7 @@ add_library(quark_backend_resources_upload STATIC
     vk_buffer_uploader.cpp
     vk_texture_uploader.cpp
     vk_instance_uploader.cpp
+    vk_material_uploader.cpp
     vk_upload_context.cpp
 )
 

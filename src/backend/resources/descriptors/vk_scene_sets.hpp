@@ -7,16 +7,16 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-class VkPerFrameSets {
+class VkSceneSets {
 public:
-  VkPerFrameSets() = default;
-  ~VkPerFrameSets() noexcept { shutdown(); }
+  VkSceneSets() = default;
+  ~VkSceneSets() noexcept { shutdown(); }
 
-  VkPerFrameSets(const VkPerFrameSets &) = delete;
-  VkPerFrameSets &operator=(const VkPerFrameSets &) = delete;
+  VkSceneSets(const VkSceneSets &) = delete;
+  VkSceneSets &operator=(const VkSceneSets &) = delete;
 
-  VkPerFrameSets(VkPerFrameSets &&other) noexcept { *this = std::move(other); }
-  VkPerFrameSets &operator=(VkPerFrameSets &&other) noexcept {
+  VkSceneSets(VkSceneSets &&other) noexcept { *this = std::move(other); }
+  VkSceneSets &operator=(VkSceneSets &&other) noexcept {
     if (this == &other) {
       return *this;
     }
@@ -32,7 +32,8 @@ public:
 
   bool init(VkDevice device, VkDescriptorSetLayout layout,
             const VkPerFrameUniformBuffers &uboBufs, VkBuffer instanceBuffer,
-            VkDeviceSize instanceFrameStrideBytes);
+            VkDeviceSize instanceFrameStrideBytes, VkBuffer materialBuffer,
+            VkDeviceSize materialTableBytes);
   void shutdown() noexcept;
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,

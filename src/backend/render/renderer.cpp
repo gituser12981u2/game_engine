@@ -7,7 +7,6 @@
 #include "backend/render/push_constants.hpp"
 #include "backend/render/resources/mesh_gpu.hpp"
 #include "backend/render/resources/mesh_store.hpp"
-#include "backend/resources/upload/vk_upload_context.hpp"
 #include "backend/util/scope_exit.hpp"
 #include "engine/geometry/transform.hpp"
 #include "engine/mesh/mesh_data.hpp"
@@ -19,6 +18,7 @@
 #include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/geometric.hpp>
 #include <iostream>
 #include <span>
 #include <string>
@@ -118,47 +118,54 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   static constexpr VkDeviceSize kUploadFrameBudgetPerFrame =
       2ULL * 1024ULL * 1024ULL;
 
-  if (!m_uploadStatic.init(*m_ctx, m_framesInFlight,
-                           kUploadStaticBudgetPerFrame, &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init static upload context\n";
+  if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudgetPerFrame,
+                      kUploadFrameBudgetPerFrame, &m_uploadProfiler)) {
+    std::cerr << "[Renderer] Failed to init upload manager\n";
     shutdown();
     return false;
   }
 
-  if (!m_uploadFrame.init(*m_ctx, m_framesInFlight, kUploadFrameBudgetPerFrame,
-                          &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init frame upload context\n";
-    shutdown();
-    return false;
-  }
-
-  if (!m_uploadStatic.beginFrame(0)) {
+  if (!m_uploads.beginFrame(0)) {
     std::cerr << "[Renderer] Failed to begin init upload frame\n";
     shutdown();
     return false;
   }
 
-  if (!m_perFrame.init(*m_ctx, m_framesInFlight, m_interface)) {
+  static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
+  static constexpr uint32_t kRequestedMaxMaterials = 1024U;
+
+  if (!m_scene.init(*m_ctx, m_framesInFlight, m_interface,
+                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials)) {
     std::cerr << "[Renderer] Failed to init per-frame data\n";
     shutdown();
     return false;
   }
 
-  if (!m_instanceUploader.init(&m_uploadFrame, &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init instance uploader\n";
+  if (!m_scene.rebindUpload(m_uploads.frame(), &m_uploadProfiler)) {
+    std::cerr << "[Renderer] Failed to bind scene uploader\n";
     shutdown();
     return false;
   }
 
-  if (!m_resources.init(*m_ctx, m_uploadStatic, m_interface,
+  if (!m_resources.init(*m_ctx, m_uploads.statik(), m_interface,
                         &m_uploadProfiler)) {
     std::cerr << "[Renderer] Failed to init resource store\n";
     shutdown();
     return false;
   }
 
+  m_resources.materials().bindMaterialTable(m_scene.materialBuffer(),
+                                            m_scene.materialCapacity());
+
+  // Create a 1x1 default white texture and material
+  if (!m_resources.materials().createDefaultMaterial()) {
+    std::cerr << "[Renderer] Failed to create the default material";
+    shutdown();
+    return false;
+  }
+
   // Submit + wait for default material
-  if (!m_uploadStatic.flush(false)) {
+  if (!m_uploads.flushStatic(false)) {
     std::cerr << "[Renderer] Failed to flush init uploads\n";
     shutdown();
     return false;
@@ -194,11 +201,10 @@ void Renderer::shutdown() noexcept {
   // Commands-dependents
   m_frames.shutdown();
   m_resources.shutdown();
-  m_uploadStatic.shutdown();
-  m_uploadFrame.shutdown();
+  m_uploads.shutdown();
   m_commands.shutdown();
 
-  m_perFrame.shutdown();
+  m_scene.shutdown();
 
   // Swapchain-dependents
   m_fbos.shutdown();
@@ -272,7 +278,7 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   scissor.extent = extent;
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  m_perFrame.bind(cmd, m_interface, m_frames.currentFrameIndex());
+  m_scene.bind(cmd, m_interface, m_frames.currentFrameIndex());
   m_cpuProfiler.incDescriptorBinds(1);
 
   // TODO: sort by mesh, material and stream directly into the uploader
@@ -286,27 +292,24 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
     }
 
     uint32_t mat = m_resources.materials().resolveMaterial(item.material);
-    BatchKey key{item.mesh, mat};
+    BatchKey key{.mesh = item.mesh, .material = mat};
     batches[key].push_back(item.model);
   }
 
-  const VkDeviceSize frameBase =
-      VkDeviceSize(frameIndex) * m_perFrame.instanceFrameStride();
   uint32_t cursor = 0; // mat4 units within frame slice
 
   for (auto &item : batches) {
     const BatchKey &key = item.first;
     std::vector<glm::mat4> &models = item.second;
+    std::span<const glm::mat4> modelsSpan(models.data(), models.size());
 
     const MeshGpu *mesh = m_resources.meshes().get(key.mesh);
     if (mesh == nullptr) {
       continue;
     }
 
-    const auto instanceUpload = m_instanceUploader.uploadMat4Instances(
-        m_perFrame.instanceBuffer(), frameBase,
-        m_perFrame.instanceFrameStride(), m_perFrame.maxInstancesPerFrame(),
-        cursor, std::span<const glm::mat4>(models.data(), models.size()));
+    auto instanceUpload =
+        m_scene.uploadInstances(frameIndex, cursor, modelsSpan);
 
     if (!instanceUpload) {
       continue;
@@ -320,6 +323,7 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
 
     DrawPushConstants pushConstants{};
     pushConstants.baseInstance = instanceUpload.baseInstance;
+    pushConstants.materialId = key.material;
 
     vkCmdPushConstants(cmd, m_interface.pipelineLayout(),
                        VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(DrawPushConstants),
@@ -336,12 +340,20 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
       vkCmdDrawIndexed(cmd, mesh->indexCount, instanceCount, 0, 0, 0);
       m_cpuProfiler.incDrawCalls(1);
 
-      m_cpuProfiler.addTriangles((mesh->indexCount / 3) * instanceCount);
+      const uint64_t trianglesPerInstance =
+          static_cast<uint64_t>(mesh->indexCount) / 3ULL;
+      const uint64_t triangles =
+          trianglesPerInstance * static_cast<uint64_t>(instanceCount);
+      m_cpuProfiler.addTriangles(triangles);
     } else {
       vkCmdDraw(cmd, mesh->vertexCount, instanceCount, 0, 0);
       m_cpuProfiler.incDrawCalls(1);
 
-      m_cpuProfiler.addTriangles((mesh->vertexCount / 3) * instanceCount);
+      const uint64_t trianglesPerInstance =
+          static_cast<uint64_t>(mesh->vertexCount) / 3ULL;
+      const uint64_t triangles =
+          trianglesPerInstance * static_cast<uint64_t>(instanceCount);
+      m_cpuProfiler.addTriangles(triangles);
     }
   }
 
@@ -394,19 +406,14 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
 
-  if (!m_uploadStatic.beginFrame(frameIndex)) {
-    std::cerr << "[Renderer] Failed to begin static upload frames\n";
-    return false;
-  }
-
-  if (!m_uploadFrame.beginFrame(frameIndex)) {
-    std::cerr << "[Renderer] Failed to begin frame upload frames\n";
+  if (!m_uploads.beginFrame(frameIndex)) {
+    std::cerr << "[Renderer] Failed to begin uploads\n";
     return false;
   }
 
   {
     CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::UpdatePerFrameUBO);
-    (void)m_perFrame.update(frameIndex, m_cameraUbo);
+    (void)m_scene.update(frameIndex, m_cameraUbo);
   }
 
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
@@ -417,14 +424,8 @@ bool Renderer::drawFrame(VkPresenter &presenter,
     recordFrame(cmd, m_fbos.at(imageIndex), presenter.swapchainExtent(), items);
   }
 
-  if (!m_uploadFrame.flush(false)) {
-    std::cerr << "[Renderer] Failed to flush frame uploads\n";
-    return false;
-  }
-
-  if (!m_uploadStatic.flush(false)) {
-    std::cerr << "[Renderer] Failed to flush static uploads\n";
-    return false;
+  if (!m_uploads.flushAll(false)) {
+    std::cerr << "[Renderer] Failed to flush\n";
   }
 
   FrameStatus sub = m_frames.submit(
@@ -513,6 +514,10 @@ uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
   return m_resources.materials().createMaterialFromTexture(handle);
 }
 
+uint32_t Renderer::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
+  return m_resources.materials().createMaterialFromBaseColorFactor(factor);
+}
+
 bool Renderer::createTextureFromImage(const engine::ImageData &img,
                                       VkTexture2D &outTex) {
   return m_resources.materials().createTextureFromImage(img, outTex);
@@ -522,8 +527,12 @@ void Renderer::setActiveMaterial(uint32_t materialIndex) {
   m_resources.materials().setActiveMaterial(materialIndex);
 }
 
-bool Renderer::beginUpload(uint32_t frameIndex) {
-  return m_uploadStatic.beginFrame(frameIndex);
+bool Renderer::updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu) {
+  return m_resources.materials().updateMaterialGPU(materialId, gpu);
 }
 
-bool Renderer::endUpload(bool wait) { return m_uploadStatic.flush(wait); }
+bool Renderer::beginUpload(uint32_t frameIndex) {
+  return m_uploads.beginFrame(frameIndex);
+}
+
+bool Renderer::endUpload(bool wait) { return m_uploads.flushStatic(wait); }

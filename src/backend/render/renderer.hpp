@@ -10,13 +10,14 @@
 #include "backend/profiling/vk_gpu_profiler.hpp"
 #include "backend/render/framebuffer_cache.hpp"
 #include "backend/render/main_pass.hpp"
-#include "backend/render/per_frame_data.hpp"
+#include "backend/render/resources/material_gpu.hpp"
+#include "backend/render/resources/material_system.hpp"
 #include "backend/render/resources/mesh_store.hpp"
 #include "backend/render/resources/resource_store.hpp"
+#include "backend/render/scene_data.hpp"
 #include "backend/render/swapchain_attachments.hpp"
+#include "backend/render/upload_manager.hpp"
 #include "backend/resources/descriptors/vk_shader_interface.hpp"
-#include "backend/resources/upload/vk_instance_uploader.hpp"
-#include "backend/resources/upload/vk_upload_context.hpp"
 #include "engine/camera/camera_ubo.hpp"
 
 #include <cstdint>
@@ -67,7 +68,7 @@ public:
 
     m_commands = std::move(other.m_commands);
     m_frames = std::move(other.m_frames);
-    m_perFrame = std::move(other.m_perFrame);
+    m_scene = std::move(other.m_scene);
 
     m_resources = std::move(other.m_resources);
 
@@ -77,8 +78,8 @@ public:
 
     // Rebind uploader's inside stores to this renderer's command context
     if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
-      (void)m_resources.rebind(*m_ctx, m_uploadStatic);
-      (void)m_resources.rebind(*m_ctx, m_uploadFrame);
+      (void)m_resources.rebind(*m_ctx, m_uploads.statik());
+      (void)m_resources.rebind(*m_ctx, m_uploads.frame());
     }
 
     return *this;
@@ -110,7 +111,9 @@ public:
                               VkTexture2D &outTex);
 
   uint32_t createMaterialFromTexture(TextureHandle textureHandle);
+  uint32_t createMaterialFromBaseColorFactor(const glm::vec4 &factor);
   void setActiveMaterial(uint32_t materialIndex);
+  bool updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu);
 
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);
@@ -139,12 +142,9 @@ private:
   FramebufferCache m_fbos;
 
   VkCommands m_commands;
-  VkUploadContext m_uploadStatic;
-  VkUploadContext m_uploadFrame;
+  UploadManager m_uploads;
   VkFrameManager m_frames;
-  PerFrameData m_perFrame;
-
-  VkInstanceUploader m_instanceUploader;
+  SceneData m_scene;
 
   ResourceStore m_resources;
 

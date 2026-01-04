@@ -5,7 +5,8 @@ add_library(quark_backend_render STATIC
     main_pass.cpp
     swapchain_attachments.cpp
     framebuffer_cache.cpp
-    per_frame_data.cpp
+    scene_data.cpp
+    upload_manager.cpp
 )
 
 target_include_directories(quark_backend_render

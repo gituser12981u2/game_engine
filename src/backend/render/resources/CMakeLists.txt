@@ -20,6 +20,8 @@ target_link_libraries(quark_backend_render_resources
         quark::backend::resources::buffers 
         quark::backend::resources::textures
         quark::engine::assets::stb_image
+    PRIVATE
+        glm::glm
 )
 
 add_library(quark::backend::render::resources ALIAS quark_backend_render_resources)

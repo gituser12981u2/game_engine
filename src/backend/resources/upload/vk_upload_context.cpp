@@ -325,6 +325,8 @@ static VkImageMemoryBarrier makeImageBarrier(VkImage image,
   return imageBarrier;
 }
 
+// TODO: generalize to include frag and vertex to cut down on copy
+// code
 void VkUploadContext::cmdBarrierBufferTransferToVertexShader(
     VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
   if (!m_recording) {
@@ -343,6 +345,27 @@ void VkUploadContext::cmdBarrierBufferTransferToVertexShader(
 
   vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1,
+                       &bufBarrier, 0, nullptr);
+}
+
+void VkUploadContext::cmdBarrierBufferTransferToFragmentShader(
+    VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
+  if (!m_recording) {
+    return;
+  }
+
+  VkBufferMemoryBarrier bufBarrier{};
+  bufBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  bufBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  bufBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  bufBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  bufBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  bufBarrier.buffer = buffer;
+  bufBarrier.offset = offset;
+  bufBarrier.size = size;
+
+  vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1,
                        &bufBarrier, 0, nullptr);
 }
 

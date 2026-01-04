@@ -24,14 +24,23 @@ bool VkShaderInterface::init(VkDevice device) {
   uboBinding.descriptorCount = 1;
   uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+  // set=0 binding=1: instance SSBO
   VkDescriptorSetLayoutBinding instanceBinding{};
   instanceBinding.binding = 1;
   instanceBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   instanceBinding.descriptorCount = 1;
   instanceBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-  std::array<VkDescriptorSetLayoutBinding, 2> bindings{uboBinding,
-                                                       instanceBinding};
+  // set=0 binding=2: material table SSBO
+  VkDescriptorSetLayoutBinding materialBinding{};
+  materialBinding.binding = 2;
+  materialBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  materialBinding.descriptorCount = 1;
+  materialBinding.stageFlags =
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  std::array<VkDescriptorSetLayoutBinding, 3> bindings{
+      uboBinding, instanceBinding, materialBinding};
 
   VkDescriptorSetLayoutCreateInfo perFrameInfo{};
   perFrameInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -39,7 +48,7 @@ bool VkShaderInterface::init(VkDevice device) {
   perFrameInfo.pBindings = bindings.data();
 
   VkResult res = vkCreateDescriptorSetLayout(m_device, &perFrameInfo, nullptr,
-                                             &m_setLayoutPerFrame);
+                                             &m_setLayoutScene);
 
   if (res != VK_SUCCESS) {
     std::cerr << "[ShaderInterface] create per-frame set layout failed: " << res
@@ -76,7 +85,7 @@ bool VkShaderInterface::init(VkDevice device) {
   pushRange.offset = 0;
   pushRange.size = sizeof(DrawPushConstants);
 
-  std::array<VkDescriptorSetLayout, 2> setLayouts = {m_setLayoutPerFrame,
+  std::array<VkDescriptorSetLayout, 2> setLayouts = {m_setLayoutScene,
                                                      m_setLayoutMaterial};
 
   VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -108,13 +117,13 @@ void VkShaderInterface::shutdown() noexcept {
       vkDestroyDescriptorSetLayout(m_device, m_setLayoutMaterial, nullptr);
     }
 
-    if (m_setLayoutPerFrame != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(m_device, m_setLayoutPerFrame, nullptr);
+    if (m_setLayoutScene != VK_NULL_HANDLE) {
+      vkDestroyDescriptorSetLayout(m_device, m_setLayoutScene, nullptr);
     }
   }
 
   m_pipelineLayout = VK_NULL_HANDLE;
   m_setLayoutMaterial = VK_NULL_HANDLE;
-  m_setLayoutPerFrame = VK_NULL_HANDLE;
+  m_setLayoutScene = VK_NULL_HANDLE;
   m_device = VK_NULL_HANDLE;
 }

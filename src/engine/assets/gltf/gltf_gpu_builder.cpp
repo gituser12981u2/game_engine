@@ -1,6 +1,12 @@
 #include "engine/assets/gltf/gltf_gpu_builder.hpp"
 
+#include "backend/render/resources/material_gpu.hpp"
+#include "backend/render/resources/material_system.hpp"
 #include "engine/assets/gltf/gltf_path.hpp"
+#include <cstdint>
+#include <glm/ext/vector_float4.hpp>
+#include <iostream>
+#include <string>
 
 namespace engine::assets {
 
@@ -17,29 +23,40 @@ bool buildGltfSceneGpu(Renderer &renderer, const std::string &gltfPath,
        ++materialIdx) {
     const auto &m = cpu.materials[materialIdx];
 
-    if (m.baseColorTextureUri.empty()) {
-      // fall back to default material
-      continue;
-    }
+    uint32_t matId = UINT32_MAX;
 
-    const std::string texPath =
-        resolveUriRelativeToFile(gltfPath, m.baseColorTextureUri);
+    if (!m.baseColorTextureUri.empty()) {
+      const std::string texPath =
+          resolveUriRelativeToFile(gltfPath, m.baseColorTextureUri);
 
-    TextureHandle texHandle{};
-    if (auto it = texCache.find(texPath); it != texCache.end()) {
-      texHandle = it->second;
-    } else {
-      texHandle = renderer.createTextureFromFile(texPath, options.flipTextureY);
-      if (texHandle.id == UINT32_MAX) {
-        // fall back to default material
-        continue;
+      std::cout << "baseColorTextureUri found\n";
+
+      TextureHandle texHandle{UINT32_MAX};
+      if (auto item = texCache.find(texPath); item != texCache.end()) {
+        texHandle = item->second;
+      } else {
+        texHandle =
+            renderer.createTextureFromFile(texPath, options.flipTextureY);
+        if (texHandle.id != UINT32_MAX) {
+          texCache.emplace(texPath, texHandle);
+        }
       }
 
-      texCache.emplace(texPath, texHandle);
+      if (texHandle.id != UINT32_MAX) {
+        matId = renderer.createMaterialFromTexture(texHandle);
+
+        // set factor (texture * factor)
+        if (matId != UINT32_MAX) {
+          MaterialGPU gpu{};
+          gpu.baseColorFactor = m.baseColorFactor;
+          (void)renderer.updateMaterialGPU(matId, gpu);
+        }
+      }
+    } else {
+      matId = renderer.createMaterialFromBaseColorFactor(m.baseColorFactor);
     }
 
-    outGpu.materialIds[materialIdx] =
-        renderer.createMaterialFromTexture(texHandle);
+    outGpu.materialIds[materialIdx] = matId;
   }
 
   outGpu.primitiveMeshes.resize(cpu.primitives.size());

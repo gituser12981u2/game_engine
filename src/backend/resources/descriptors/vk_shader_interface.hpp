@@ -20,8 +20,7 @@ public:
     shutdown();
 
     m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
-    m_setLayoutPerFrame =
-        std::exchange(other.m_setLayoutPerFrame, VK_NULL_HANDLE);
+    m_setLayoutScene = std::exchange(other.m_setLayoutScene, VK_NULL_HANDLE);
     m_setLayoutMaterial =
         std::exchange(other.m_setLayoutMaterial, VK_NULL_HANDLE);
     m_pipelineLayout = std::exchange(other.m_pipelineLayout, VK_NULL_HANDLE);
@@ -32,12 +31,13 @@ public:
   bool init(VkDevice device);
   void shutdown() noexcept;
 
-  [[nodiscard]] VkDescriptorSetLayout setLayoutPerFrame() const noexcept {
-    return m_setLayoutPerFrame;
+  [[nodiscard]] VkDescriptorSetLayout setLayoutScene() const noexcept {
+    return m_setLayoutScene;
   } // set=0
   [[nodiscard]] VkDescriptorSetLayout setLayoutMaterial() const noexcept {
     return m_setLayoutMaterial;
   } // set=1
+
   [[nodiscard]] VkPipelineLayout pipelineLayout() const noexcept {
     return m_pipelineLayout;
   }
@@ -47,7 +47,7 @@ public:
 
 private:
   VkDevice m_device = VK_NULL_HANDLE;                         // non-owning
-  VkDescriptorSetLayout m_setLayoutPerFrame = VK_NULL_HANDLE; // owning
+  VkDescriptorSetLayout m_setLayoutScene = VK_NULL_HANDLE;    // owning
   VkDescriptorSetLayout m_setLayoutMaterial = VK_NULL_HANDLE; // owning
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;         // owning
 };

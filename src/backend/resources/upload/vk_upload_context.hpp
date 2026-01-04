@@ -89,6 +89,10 @@ public:
                                               VkDeviceSize offset,
                                               VkDeviceSize size);
 
+  void cmdBarrierBufferTransferToFragmentShader(VkBuffer buffer,
+                                                VkDeviceSize offset,
+                                                VkDeviceSize size);
+
   // If wait=true, wait for completion.
   bool flush(bool wait);
 
