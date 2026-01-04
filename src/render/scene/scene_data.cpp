@@ -158,6 +158,11 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
     return false;
   }
 
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::MaterialAllocatedBytes,
+                static_cast<std::uint64_t>(m_materialTableBytes));
+  }
+
   return true;
 }
 

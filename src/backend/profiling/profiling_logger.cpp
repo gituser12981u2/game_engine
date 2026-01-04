@@ -161,6 +161,11 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   const std::uint64_t texBytes =
       ust.v[idx(UploadProfiler::Stat::TextureUploadBytes)];
 
+  const std::uint64_t matCount =
+      ust.v[idx(UploadProfiler::Stat::MaterialUploadCount)];
+  const std::uint64_t matBytes =
+      ust.v[idx(UploadProfiler::Stat::MaterialUploadBytes)];
+
   const std::uint64_t instCount =
       ust.v[idx(UploadProfiler::Stat::InstanceUploadCount)];
   const std::uint64_t instBytes =
@@ -176,6 +181,8 @@ static void logUpload(const UploadProfiler &upload) noexcept {
       lt.v[idx(UploadProfiler::Stat::BufferAllocatedBytes)];
   const std::uint64_t texAllocBytes =
       lt.v[idx(UploadProfiler::Stat::TextureAllocatedBytes)];
+  const std::uint64_t matAllocBytes =
+      lt.v[idx(UploadProfiler::Stat::MaterialAllocatedBytes)];
   const std::uint64_t instAllocBytes =
       lt.v[idx(UploadProfiler::Stat::InstanceAllocatedBytes)];
 
@@ -183,11 +190,13 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   std::array<char, 32> stagingUsedStr{};
   std::array<char, 32> bufStr{};
   std::array<char, 32> texStr{};
+  std::array<char, 32> matStr{};
   std::array<char, 32> instStr{};
 
   std::array<char, 32> stagingAllocStr{};
   std::array<char, 32> bufAllocStr{};
   std::array<char, 32> texAllocStr{};
+  std::array<char, 32> matAllocStr{};
   std::array<char, 32> instAllocStr{};
 
   formatBytes(memcpyStr.data(), sizeof(memcpyStr), memcpyBytes);
@@ -202,6 +211,9 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   formatBytes(texStr.data(), sizeof(texStr), texBytes);
   formatBytes(texAllocStr.data(), sizeof(texAllocStr), texAllocBytes);
 
+  formatBytes(matStr.data(), matStr.size(), matBytes);
+  formatBytes(matAllocStr.data(), matAllocStr.size(), matAllocBytes);
+
   formatBytes(instStr.data(), sizeof(instStr), instBytes);
   formatBytes(instAllocStr.data(), sizeof(instAllocStr), instAllocBytes);
 
@@ -210,16 +222,17 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   ignore_snprintf(std::snprintf(
       line.data(), line.size(),
       "UPL: sub %-3llu  memcpy %-3llu/%s  staging used %s  inst "
-      "%-3llu/%s  buf %-3llu/%s  tex %-3llu/%s  "
-      "alloc(staging %s c=%llu  buf %s  tex %s  inst %s)",
+      "%-3llu/%s  buf %-3llu/%s  tex %-3llu/%s  mat %-3llu/%s  "
+      "alloc(staging %s c=%llu  buf %s  tex %s  mat %s  inst %s)",
       static_cast<unsigned long long>(submitCount),
       static_cast<unsigned long long>(memcpyCount), memcpyStr.data(),
       stagingUsedStr.data(), static_cast<unsigned long long>(instCount),
       instStr.data(), static_cast<unsigned long long>(bufCount), bufStr.data(),
       static_cast<unsigned long long>(texCount), texStr.data(),
+      static_cast<unsigned long long>(matCount), matStr.data(),
       stagingAllocStr.data(),
       static_cast<unsigned long long>(stagingCreatedCount), bufAllocStr.data(),
-      texAllocStr.data(), instAllocStr.data()));
+      texAllocStr.data(), matAllocStr.data(), instAllocStr.data()));
 
   std::cerr << line.data() << "\n";
 }

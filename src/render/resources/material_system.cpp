@@ -5,13 +5,32 @@
 #include "engine/assets/stb_image/stb_image_loader.hpp"
 #include "render/resources/material_gpu.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
+namespace {
+
+uint32_t clampMateriaCapacity(VkPhysicalDevice physicalDevice,
+                              uint32_t requested) noexcept {
+  VkPhysicalDeviceProperties props{};
+  vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+  const uint32_t maxSampled = props.limits.maxDescriptorSetSampledImages;
+
+  if (maxSampled == 0) {
+    return 0;
+  }
+
+  return std::min(requested, maxSampled);
+}
+
+} // namespace
+
 bool MaterialSystem::init(VkBackendCtx &ctx, VkUploadContext &upload,
                           VkDescriptorSetLayout materialSetLayout,
-                          uint32_t maxMaterials, UploadProfiler *profiler) {
+                          uint32_t materialCapacity, UploadProfiler *profiler) {
   shutdown();
 
   m_uploaderProfiler = profiler;
@@ -31,7 +50,16 @@ bool MaterialSystem::init(VkBackendCtx &ctx, VkUploadContext &upload,
     return false;
   }
 
-  if (!m_materialSets.init(device, materialSetLayout, maxMaterials)) {
+  const uint32_t cappedCapacity =
+      clampMateriaCapacity(ctx.physicalDevice(), materialCapacity);
+
+  if (cappedCapacity == 0) {
+    std::cerr << "[MaterialSystem] Material capacity invalid after clamp\n";
+    shutdown();
+    return false;
+  }
+
+  if (!m_materialSets.init(device, materialSetLayout, materialCapacity)) {
     std::cerr << "[MaterialSystem] Failed to init material sets\n";
     shutdown();
     return false;

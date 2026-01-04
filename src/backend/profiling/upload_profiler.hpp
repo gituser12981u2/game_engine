@@ -26,6 +26,10 @@ public:
     TextureUploadBytes,
     TextureAllocatedBytes,
 
+    MaterialUploadCount,
+    MaterialUploadBytes,
+    MaterialAllocatedBytes,
+
     InstanceUploadCount,
     InstanceUploadBytes,
     InstanceAllocatedBytes,
@@ -53,24 +57,35 @@ public:
       return "UploadMemcpyCount";
     case Stat::UploadMemcpyBytes:
       return "UploadMemcpyBytes";
+
     case Stat::StagingCreatedCount:
       return "StagingCreatedCount";
     case Stat::StagingUsedBytes:
       return "StagingUsedBytes";
     case Stat::StagingAllocatedBytes:
       return "StatingAllocatedBytes";
+
     case Stat::BufferUploadCount:
       return "BufferUploadCount";
     case Stat::BufferUploadBytes:
       return "BufferUploadBytes";
     case Stat::BufferAllocatedBytes:
       return "StatingAllocatedBytes";
+
     case Stat::TextureUploadCount:
       return "TextureUploadCount";
     case Stat::TextureUploadBytes:
       return "TextureUploadBytes";
     case Stat::TextureAllocatedBytes:
       return "TextureAllocatedBytes";
+
+    case Stat::MaterialUploadCount:
+      return "MaterialUploadCount";
+    case Stat::MaterialUploadBytes:
+      return "MaterialUploadBytes";
+    case Stat::MaterialAllocatedBytes:
+      return "MaterialAllocatedBytes";
+
     case Stat::InstanceUploadCount:
       return "InstanceUploadCount";
     case Stat::InstanceUploadBytes:

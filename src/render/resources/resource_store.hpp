@@ -6,13 +6,15 @@
 #include "backend/profiling/upload_profiler.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
+#include "render/scene/scene_data.hpp"
 
 class VkCommands;
 
 class ResourceStore {
 public:
   bool init(VkBackendCtx &ctx, VkUploadContext &uploader,
-            const VkShaderInterface &interface, UploadProfiler *profiler);
+            const VkShaderInterface &interface, SceneData &data,
+            UploadProfiler *profiler);
   void shutdown() noexcept;
 
   MeshStore &meshes() { return m_meshes; }

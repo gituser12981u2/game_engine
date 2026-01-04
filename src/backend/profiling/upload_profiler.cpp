@@ -7,6 +7,7 @@ static constexpr bool isLifetimeStat(UploadProfiler::Stat stat) noexcept {
   switch (stat) {
   case S::BufferAllocatedBytes:
   case S::TextureAllocatedBytes:
+  case S::MaterialAllocatedBytes:
   case S::InstanceAllocatedBytes:
   case S::StagingCreatedCount:
   case S::StagingAllocatedBytes:

@@ -4,6 +4,7 @@
 #include "backend/profiling/upload_profiler.hpp"
 #include "render/resources/material_gpu.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
@@ -34,6 +35,12 @@ bool VkMaterialUploader::uploadOne(VkBuffer materialBuffer,
                             bytes);
   m_upload->cmdBarrierBufferTransferToFragmentShader(materialBuffer,
                                                      dstOffsetBytes, bytes);
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::MaterialUploadCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::MaterialUploadBytes,
+                static_cast<uint64_t>(bytes));
+  }
 
   return true;
 }

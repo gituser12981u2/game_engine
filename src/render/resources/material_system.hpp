@@ -21,11 +21,9 @@ struct TextureHandle {
 
 class MaterialSystem {
 public:
-  // TODO: make maxMaterials dynamic
-  // TODO: take in from scene data
   bool init(VkBackendCtx &ctx, VkUploadContext &upload,
-            VkDescriptorSetLayout materialSetLayout,
-            uint32_t maxMaterials = 128, UploadProfiler *profiler = nullptr);
+            VkDescriptorSetLayout materialSetLayout, uint32_t materialCapacity,
+            UploadProfiler *profiler = nullptr);
   void shutdown() noexcept;
 
   TextureHandle createTextureFromFile(const std::string &path, bool flipY);

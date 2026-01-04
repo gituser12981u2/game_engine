@@ -148,7 +148,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  if (!m_resources.init(*m_ctx, m_uploads.statik(), m_interface,
+  if (!m_resources.init(*m_ctx, m_uploads.statik(), m_interface, m_scene,
                         &m_uploadProfiler)) {
     std::cerr << "[Renderer] Failed to init resource store\n";
     shutdown();
