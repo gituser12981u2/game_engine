@@ -11,6 +11,8 @@
 
 namespace profiling {
 
+inline void ignore_snprintf(int rc) noexcept { (void)rc; }
+
 // Per-frame logging
 class FrameLogger {
 public:

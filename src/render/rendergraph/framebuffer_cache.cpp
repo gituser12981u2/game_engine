@@ -2,7 +2,7 @@
 
 #include "backend/presentation/vk_presenter.hpp"
 #include "render/rendergraph/main_pass.hpp"
-#include "render/rendergraph/swapchain_attachments.hpp"
+#include "render/rendergraph/swapchain_targets.hpp"
 
 bool FramebufferCache::init(VkBackendCtx &ctx, VkPresenter &presenter,
                             const SwapchainTargets &targets,

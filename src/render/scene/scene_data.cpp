@@ -3,6 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
+#include "backend/profiling/upload_profiler.hpp"
 #include "engine/camera/camera_ubo.hpp"
 #include "render/resources/material_gpu.hpp"
 
@@ -15,8 +16,10 @@
 bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
                      const VkShaderInterface &interface,
                      uint32_t requestedMaxInstancesPerFrame,
-                     uint32_t requestedMaxMaterials) {
+                     uint32_t requestedMaxMaterials, UploadProfiler *profiler) {
   shutdown();
+
+  m_profiler = profiler;
 
   if (framesInFlight == 0) {
     std::cerr << "[SceneData] framesInFlight must be greater than 0\n";
@@ -43,8 +46,6 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     return false;
   }
 
-  // TODO make a big global buffer that is not an SSBO per frame
-  // to make this more GPU bound and add indirect draw calls
   if (!initInstanceBuffer(ctx.allocator(), framesInFlight,
                           requestedMaxInstancesPerFrame)) {
     shutdown();
@@ -118,8 +119,13 @@ bool SceneData::initInstanceBuffer(VmaAllocator allocator,
 
   if (!m_instanceBuf.init(allocator, totalBytes, usage,
                           VkBufferObj::MemUsage::GpuOnly, /*mapped*/ false)) {
-    std::cerr << "[SceneData] Failed to create material SSBO\n";
+    std::cerr << "[SceneData] Failed to create instance SSBO\n";
     return false;
+  }
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceAllocatedBytes,
+                static_cast<std::uint64_t>(totalBytes));
   }
 
   return true;
@@ -176,6 +182,8 @@ void SceneData::shutdown() noexcept {
   m_instanceFrameStride = 0;
   m_maxInstancesPerFrame = 0;
   m_materialTableBytes = 0;
+
+  m_profiler = nullptr;
 
   m_initiailized = false;
 }

@@ -1,6 +1,6 @@
 add_library(quark_render_rendergraph STATIC 
     main_pass.cpp
-    swapchain_attachments.cpp
+    swapchain_targets.cpp
     framebuffer_cache.cpp
 )
 

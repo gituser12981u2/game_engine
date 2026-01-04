@@ -5,6 +5,7 @@
 #include "backend/profiling/vk_gpu_profiler.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
@@ -47,41 +48,98 @@ bool FrameLogger::shouldLog() noexcept {
   return (m_frameCounter % m_period) == 0ULL;
 }
 
+static inline double msAt(const CpuProfiler::FrameStats &st,
+                          CpuProfiler::Stat stat) noexcept {
+  return st.ms[static_cast<size_t>(stat)];
+}
+
+static inline void formatMs(char *out, size_t outSize, double ms) noexcept {
+  if (ms >= 10.0) {
+    ignore_snprintf(std::snprintf(out, outSize, "%6.2f", ms));
+  } else if (ms >= 1.0) {
+    ignore_snprintf(std::snprintf(out, outSize, "%6.3f", ms));
+  } else if (ms >= 0.01) {
+    ignore_snprintf(std::snprintf(out, outSize, "%6.4f", ms));
+  } else if (ms > 0.0) {
+    ignore_snprintf(std::snprintf(out, outSize, "%6.6f", ms));
+  } else {
+    ignore_snprintf(std::snprintf(out, outSize, "%6.6f", 0.0));
+  }
+}
+
 static void logCpu(const CpuProfiler &cpu) noexcept {
   const auto &st = cpu.last();
 
-  std::cerr << "\n[Profiler]\n CPU ms: frame="
-            << st.ms[(size_t)CpuProfiler::Stat::FrameTotal]
-            << " acquire=" << st.ms[(size_t)CpuProfiler::Stat::Acquire]
-            << " waitForFence="
-            << st.ms[(size_t)CpuProfiler::Stat::WaitForFence]
-            << " ubo=" << st.ms[(size_t)CpuProfiler::Stat::UpdatePerFrameUBO]
-            << " record=" << st.ms[(size_t)CpuProfiler::Stat::RecordCmd]
+  std::array<char, 512> line1{};
+  std::array<char, 256> line2{};
 
-            << " queueSubmit=" << st.ms[(size_t)CpuProfiler::Stat::QueueSubmit]
-            << " queuePresent="
-            << st.ms[(size_t)CpuProfiler::Stat::QueuePresent]
-            << " other=" << st.ms[(size_t)CpuProfiler::Stat::Other] << "\n"
-            << " draws=" << st.drawCalls << " triangles=" << st.triangles
-            << " pipeBinds=" << st.pipelineBinds
-            << " descBinds=" << st.descriptorBinds << "\n";
+  std::array<char, 16> frame{};
+  std::array<char, 16> acq{};
+  std::array<char, 16> fence{};
+  std::array<char, 16> ubo{};
+  std::array<char, 16> rec{};
+  std::array<char, 16> sub{};
+  std::array<char, 16> pres{};
+  std::array<char, 16> other{};
+
+  formatMs(frame.data(), frame.size(), msAt(st, CpuProfiler::Stat::FrameTotal));
+  formatMs(acq.data(), acq.size(), msAt(st, CpuProfiler::Stat::Acquire));
+  formatMs(fence.data(), fence.size(),
+           msAt(st, CpuProfiler::Stat::WaitForFence));
+  formatMs(ubo.data(), ubo.size(),
+           msAt(st, CpuProfiler::Stat::UpdatePerFrameUBO));
+  formatMs(rec.data(), rec.size(), msAt(st, CpuProfiler::Stat::RecordCmd));
+  formatMs(sub.data(), sub.size(), msAt(st, CpuProfiler::Stat::QueueSubmit));
+  formatMs(pres.data(), pres.size(), msAt(st, CpuProfiler::Stat::QueuePresent));
+  formatMs(other.data(), other.size(), msAt(st, CpuProfiler::Stat::Other));
+
+  ignore_snprintf(std::snprintf(
+      line1.data(), line1.size(),
+      "CPU  ms: frame %s  acq %s  fence %s  ubo %s  rec %s  sub %s  "
+      "pres %s  other %s",
+      frame.data(), acq.data(), fence.data(), ubo.data(), rec.data(),
+      sub.data(), pres.data(), other.data()));
+
+  ignore_snprintf(std::snprintf(
+      line2.data(), line2.size(),
+      "CPU cnt: draws %-6u inst %-6u tris %-8llu pipe %-4u desc %-4u",
+      st.drawCalls, st.instances, static_cast<unsigned long long>(st.triangles),
+      st.pipelineBinds, st.descriptorBinds));
+
+  std::cerr << "\n[Profiler]\n" << line1.data() << "\n" << line2.data() << "\n";
 }
 
 static void logGpu(const VkGpuProfiler &gpu) noexcept {
   const auto &gst = gpu.last();
-  if (gst.valid) {
-    std::cerr << " gpuFrame=" << gst.frameMs
-              << " gpuMainPass=" << gst.mainPassMs
-              << " gpuIdleGap=" << gst.idleGapMs << "\n";
+  if (!gst.valid) {
+    return;
   }
+
+  std::array<char, 16> frame{};
+  std::array<char, 16> main{};
+  std::array<char, 16> idle{};
+
+  formatMs(frame.data(), frame.size(), gst.frameMs);
+  formatMs(main.data(), main.size(), gst.mainPassMs);
+  formatMs(idle.data(), idle.size(), gst.idleGapMs);
+
+  std::array<char, 256> line{};
+  ignore_snprintf(std::snprintf(line.data(), line.size(),
+                                "GPU  ms: frame %s  main %s  idle %s",
+                                frame.data(), main.data(), idle.data()));
+
+  std::cerr << line.data() << "\n";
 }
 
 static void logUpload(const UploadProfiler &upload) noexcept {
   const auto &ust = upload.last();
+  const auto &lt = upload.lifetime();
+
   const auto idx = [](UploadProfiler::Stat stat) {
     return static_cast<std::size_t>(stat);
   };
 
+  // per frame
   const std::uint64_t submitCount =
       ust.v[idx(UploadProfiler::Stat::UploadSubmitCount)];
 
@@ -90,10 +148,6 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   const std::uint64_t memcpyBytes =
       ust.v[idx(UploadProfiler::Stat::UploadMemcpyBytes)];
 
-  const std::uint64_t stagingCreatedCount =
-      ust.v[idx(UploadProfiler::Stat::StagingCreatedCount)];
-  const std::uint64_t stagingAllocBytes =
-      ust.v[idx(UploadProfiler::Stat::StagingAllocatedBytes)];
   const std::uint64_t stagingUsedBytes =
       ust.v[idx(UploadProfiler::Stat::StagingUsedBytes)];
 
@@ -101,45 +155,73 @@ static void logUpload(const UploadProfiler &upload) noexcept {
       ust.v[idx(UploadProfiler::Stat::BufferUploadCount)];
   const std::uint64_t bufBytes =
       ust.v[idx(UploadProfiler::Stat::BufferUploadBytes)];
-  const std::uint64_t bufAllocBytes =
-      ust.v[idx(UploadProfiler::Stat::BufferAllocatedBytes)];
 
   const std::uint64_t texCount =
       ust.v[idx(UploadProfiler::Stat::TextureUploadCount)];
   const std::uint64_t texBytes =
       ust.v[idx(UploadProfiler::Stat::TextureUploadBytes)];
+
+  const std::uint64_t instCount =
+      ust.v[idx(UploadProfiler::Stat::InstanceUploadCount)];
+  const std::uint64_t instBytes =
+      ust.v[idx(UploadProfiler::Stat::InstanceUploadBytes)];
+
+  // lifetime
+  const std::uint64_t stagingCreatedCount =
+      lt.v[idx(UploadProfiler::Stat::StagingCreatedCount)];
+
+  const std::uint64_t stagingAllocBytes =
+      lt.v[idx(UploadProfiler::Stat::StagingAllocatedBytes)];
+  const std::uint64_t bufAllocBytes =
+      lt.v[idx(UploadProfiler::Stat::BufferAllocatedBytes)];
   const std::uint64_t texAllocBytes =
-      ust.v[idx(UploadProfiler::Stat::TextureAllocatedBytes)];
+      lt.v[idx(UploadProfiler::Stat::TextureAllocatedBytes)];
+  const std::uint64_t instAllocBytes =
+      lt.v[idx(UploadProfiler::Stat::InstanceAllocatedBytes)];
 
   std::array<char, 32> memcpyStr{};
-  std::array<char, 32> stagingAllocStr{};
   std::array<char, 32> stagingUsedStr{};
   std::array<char, 32> bufStr{};
-  std::array<char, 32> bufAllocStr{};
   std::array<char, 32> texStr{};
+  std::array<char, 32> instStr{};
+
+  std::array<char, 32> stagingAllocStr{};
+  std::array<char, 32> bufAllocStr{};
   std::array<char, 32> texAllocStr{};
+  std::array<char, 32> instAllocStr{};
 
   formatBytes(memcpyStr.data(), sizeof(memcpyStr), memcpyBytes);
+
   formatBytes(stagingAllocStr.data(), sizeof(stagingAllocStr),
               stagingAllocBytes);
   formatBytes(stagingUsedStr.data(), sizeof(stagingUsedStr), stagingUsedBytes);
+
   formatBytes(bufStr.data(), sizeof(bufStr), bufBytes);
   formatBytes(bufAllocStr.data(), sizeof(bufAllocStr), bufAllocBytes);
+
   formatBytes(texStr.data(), sizeof(texStr), texBytes);
   formatBytes(texAllocStr.data(), sizeof(texAllocStr), texAllocBytes);
 
+  formatBytes(instStr.data(), sizeof(instStr), instBytes);
+  formatBytes(instAllocStr.data(), sizeof(instAllocStr), instAllocBytes);
+
   // If prints show 0 here, its likely the scene if only static meshes
-  std::cerr << " submits=" << submitCount
-            << " staging=(created=" << stagingCreatedCount
-            << " alloc=" << stagingAllocStr.data()
-            << " used=" << stagingUsedStr.data() << ")"
-            << " memcpy=(count=" << memcpyCount << " size=" << memcpyStr.data()
-            << ")"
-            << " buf=(uploads=" << bufCount << " bytes=" << bufStr.data()
-            << " alloc=" << bufAllocStr.data() << ")"
-            << " tex=(uploads=" << texCount << " bytes=" << texStr.data()
-            << " alloc=" << texAllocStr.data() << ")"
-            << "\n";
+  std::array<char, 768> line{};
+  ignore_snprintf(std::snprintf(
+      line.data(), line.size(),
+      "UPL: sub %-3llu  memcpy %-3llu/%s  staging used %s  inst "
+      "%-3llu/%s  buf %-3llu/%s  tex %-3llu/%s  "
+      "alloc(staging %s c=%llu  buf %s  tex %s  inst %s)",
+      static_cast<unsigned long long>(submitCount),
+      static_cast<unsigned long long>(memcpyCount), memcpyStr.data(),
+      stagingUsedStr.data(), static_cast<unsigned long long>(instCount),
+      instStr.data(), static_cast<unsigned long long>(bufCount), bufStr.data(),
+      static_cast<unsigned long long>(texCount), texStr.data(),
+      stagingAllocStr.data(),
+      static_cast<unsigned long long>(stagingCreatedCount), bufAllocStr.data(),
+      texAllocStr.data(), instAllocStr.data()));
+
+  std::cerr << line.data() << "\n";
 }
 
 void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
@@ -165,6 +247,8 @@ void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
 
   logUpload(upload);
   logGpu(gpu);
+
+  std::cout << "\n";
 }
 
 #ifndef NDEBUG

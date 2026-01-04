@@ -26,22 +26,24 @@ public:
     TextureUploadBytes,
     TextureAllocatedBytes,
 
+    InstanceUploadCount,
+    InstanceUploadBytes,
+    InstanceAllocatedBytes,
+
     Count
   };
 
-  struct FrameStats {
+  struct Stats {
     std::array<std::uint64_t, static_cast<size_t>(Stat::Count)> v{};
   };
 
-  void endFrame() noexcept {
-    m_last = m_cur;
-    m_cur = FrameStats{};
-  }
-  [[nodiscard]] const FrameStats &last() const noexcept { return m_last; }
+  void beginFrame() noexcept;
+  void endFrame() noexcept;
 
-  void add(Stat stat, std::uint64_t n = 1) noexcept {
-    m_cur.v[static_cast<std::size_t>(stat)] += n;
-  }
+  [[nodiscard]] const Stats &last() const noexcept { return m_lastFrame; }
+  [[nodiscard]] const Stats &lifetime() const noexcept { return m_lifetime; }
+
+  void add(Stat stat, std::uint64_t value) noexcept;
 
   static constexpr std::string_view name(Stat stat) noexcept {
     switch (stat) {
@@ -69,20 +71,29 @@ public:
       return "TextureUploadBytes";
     case Stat::TextureAllocatedBytes:
       return "TextureAllocatedBytes";
+    case Stat::InstanceUploadCount:
+      return "InstanceUploadCount";
+    case Stat::InstanceUploadBytes:
+      return "InstanceUploadBytes";
+    case Stat::InstanceAllocatedBytes:
+      return "InstanceAllocatedBytes";
     default:
       return "Unknown";
     }
   }
 
 private:
-  FrameStats m_cur{};
-  FrameStats m_last{};
+  void resetFrame() noexcept { m_frame = Stats{}; }
+
+  Stats m_frame{};
+  Stats m_lastFrame{};
+  Stats m_lifetime{};
 };
 
 static inline void profilerAdd(UploadProfiler *profiler,
                                UploadProfiler::Stat stat,
-                               std::uint64_t n) noexcept {
+                               std::uint64_t v) noexcept {
   if (profiler != nullptr) {
-    profiler->add(stat, n);
+    profiler->add(stat, v);
   }
 }

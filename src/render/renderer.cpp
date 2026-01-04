@@ -135,7 +135,8 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
   if (!m_scene.init(*m_ctx, m_framesInFlight, m_interface,
-                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials)) {
+                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials,
+                    &m_uploadProfiler)) {
     std::cerr << "[Renderer] Failed to init per-frame data\n";
     shutdown();
     return false;
@@ -316,6 +317,7 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
     }
 
     const uint32_t instanceCount = instanceUpload.instanceCount;
+    m_cpuProfiler.addInstances(instanceCount);
 
     m_resources.materials().bindMaterial(cmd, m_interface.pipelineLayout(), 1,
                                          key.material);

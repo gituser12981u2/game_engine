@@ -6,13 +6,14 @@
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
 #include "backend/gpu/upload/vk_instance_uploader.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 #include "engine/camera/camera_ubo.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <span>
 #include <vulkan/vulkan_core.h>
+
+class UploadProfiler;
 
 class SceneData {
 public:
@@ -28,7 +29,7 @@ public:
   bool init(VkBackendCtx &ctx, uint32_t framesInFlight,
             const VkShaderInterface &interface,
             uint32_t requestedMaxInstancesPerFrame,
-            uint32_t requestedMaxMaterials);
+            uint32_t requestedMaxMaterials, UploadProfiler *profiler);
   void shutdown() noexcept;
 
   bool update(uint32_t frameIndex, const CameraUBO &camera);
@@ -44,7 +45,7 @@ public:
   [[nodiscard]] VkBuffer materialBuffer() const noexcept {
     return m_materialBuf.handle();
   }
-  [[nodiscard]] VkDeviceSize materialCapacity() const noexcept {
+  [[nodiscard]] uint32_t materialCapacity() const noexcept {
     return m_materialCapacity;
   }
   [[nodiscard]] VkDeviceSize materialTableBytes() const noexcept {
@@ -82,6 +83,8 @@ private:
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
   VkInstanceUploader m_instanceUploader;
+
+  UploadProfiler *m_profiler = nullptr; // non-owning
 
   VkSceneSets m_sets; // set 0 bindings
   bool m_initiailized = false;

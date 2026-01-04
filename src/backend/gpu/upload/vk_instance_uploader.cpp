@@ -48,11 +48,9 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
     profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, bytes);
   }
 
-  // TODO: add upload instance profiler
-
   const uint32_t base = cursorInstances;
   const VkDeviceSize dstOffset =
-      frameBaseBytes + VkDeviceSize(base) * sizeof(glm::mat4);
+      frameBaseBytes + (VkDeviceSize(base) * sizeof(glm::mat4));
 
   m_upload->cmdCopyToBuffer(instanceBuffer, dstOffset, stageAlloc.offset,
                             bytes);
@@ -60,6 +58,11 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
                                                    bytes);
 
   cursorInstances += count;
+
+  if (m_profiler != nullptr) {
+    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceUploadCount, 1);
+    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceUploadBytes, bytes);
+  }
 
   out.baseInstance = base;
   out.instanceCount = count;

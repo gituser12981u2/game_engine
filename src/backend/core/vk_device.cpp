@@ -192,7 +192,6 @@ bool VkDeviceCtx::createLogicalDevice() {
   queueCreateInfo.pQueuePriorities = &queuePriority;
 
   VkPhysicalDeviceFeatures deviceFeatures{};
-  // TODO: enable features
 
   VkDeviceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

@@ -126,7 +126,6 @@ int main() {
 
     draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
 
-    // draw.clear();
     // pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
 
     (void)app.renderer().drawFrame(app.presenter(), draw);

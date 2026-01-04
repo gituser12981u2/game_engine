@@ -11,7 +11,7 @@
 
 #include "render/rendergraph/framebuffer_cache.hpp"
 #include "render/rendergraph/main_pass.hpp"
-#include "render/rendergraph/swapchain_attachments.hpp"
+#include "render/rendergraph/swapchain_targets.hpp"
 
 #include "render/resources/material_gpu.hpp"
 #include "render/resources/material_system.hpp"

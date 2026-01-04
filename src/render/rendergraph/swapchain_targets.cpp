@@ -1,4 +1,4 @@
-#include "render/rendergraph/swapchain_attachments.hpp"
+#include "render/rendergraph/swapchain_targets.hpp"
 
 #include "backend/presentation/vk_presenter.hpp"
 

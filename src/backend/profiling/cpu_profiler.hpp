@@ -30,6 +30,7 @@ public:
     uint64_t triangles = 0;
     uint32_t pipelineBinds = 0;
     uint32_t descriptorBinds = 0;
+    uint32_t instances = 0;
   };
 
   class Scope {
@@ -103,6 +104,7 @@ public:
   void incDescriptorBinds(uint32_t n = 1) noexcept {
     m_cur.descriptorBinds += n;
   }
+  void addInstances(uint32_t n) noexcept { m_cur.instances += n; }
 
   [[nodiscard]] const FrameStats &last() const noexcept { return m_last; }
 

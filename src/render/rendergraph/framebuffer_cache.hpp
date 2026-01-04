@@ -4,7 +4,7 @@
 #include "backend/graphics/vk_framebuffers.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 #include "render/rendergraph/main_pass.hpp"
-#include "render/rendergraph/swapchain_attachments.hpp"
+#include "render/rendergraph/swapchain_targets.hpp"
 
 #include <vulkan/vulkan_core.h>
 

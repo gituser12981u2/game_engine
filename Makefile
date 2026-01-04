@@ -42,7 +42,6 @@ endif
 
 .PHONY: vcpkg-setup configure configure-analyze analyze tidy format format-check build run clean clean-analyze vcpkg-clean vcpkg-clean-all shaders
 
-# TODO: add vcpkg clean
 vcpkg-setup:
 	@echo "Setting up vcpkg at commit ${VCPKG_COMMIT}..."
 
