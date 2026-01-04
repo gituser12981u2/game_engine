@@ -9,8 +9,10 @@ target_include_directories(quark_engine_geometry
 
 target_link_libraries(quark_engine_geometry
     PUBLIC
-        quark::backend::render
         glm::glm
+
+        quark::render
+
 )
 
 add_library(quark::engine::geometry ALIAS quark_engine_geometry)

@@ -1,8 +1,9 @@
 #include "engine/assets/gltf/gltf_gpu_builder.hpp"
 
-#include "backend/render/resources/material_gpu.hpp"
-#include "backend/render/resources/material_system.hpp"
 #include "engine/assets/gltf/gltf_path.hpp"
+#include "render/resources/material_gpu.hpp"
+#include "render/resources/material_system.hpp"
+
 #include <cstdint>
 #include <glm/ext/vector_float4.hpp>
 #include <iostream>

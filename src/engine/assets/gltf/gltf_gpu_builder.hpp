@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/render/renderer.hpp"
 #include "engine/assets/gltf/gltf_types.hpp"
+#include "render/renderer.hpp"
 
 namespace engine::assets {
 

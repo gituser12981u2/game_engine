@@ -1,12 +1,12 @@
 #include "backend/presentation/vk_presenter.hpp"
-#include "backend/render/renderer.hpp"
-#include "backend/render/resources/material_system.hpp"
-#include "backend/render/resources/mesh_store.hpp"
 #include "engine/app/app.hpp"
 #include "engine/assets/gltf/gltf_asset.hpp"
 #include "engine/camera/camera.hpp"
 #include "engine/geometry/transform.hpp"
 #include "platform/input/camera_controller.hpp"
+#include "render/renderer.hpp"
+#include "render/resources/material_system.hpp"
+#include "render/resources/mesh_store.hpp"
 
 #include <GLFW/glfw3.h>
 #include <cstdint>

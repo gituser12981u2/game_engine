@@ -2,9 +2,9 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
-#include "backend/render/renderer.hpp"
 #include "engine/geometry/mesh_factory.hpp"
 #include "platform/window/glfw_window.hpp"
+#include "render/renderer.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -13,7 +13,7 @@
 struct AppConfig {
   uint32_t width = 800;
   uint32_t height = 600;
-  const char *title = "Engine";
+  const char *title = "Quark";
   uint32_t framesInFlight = 2;
   std::string vertSpvPath = "shaders/bin/shader.vert.spv";
   std::string fragSpvPath = "shaders/bin/shader.frag.spv";

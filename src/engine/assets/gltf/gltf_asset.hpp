@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/render/renderer.hpp"
 #include "engine/assets/gltf/gltf_types.hpp"
+#include "render/renderer.hpp"
 
 #include <glm/ext/matrix_float4x4.hpp>
 #include <string>

@@ -10,10 +10,11 @@ target_include_directories(quark_engine_app
 target_link_libraries(quark_engine_app
     PUBLIC
       quark::backend::core
-      quark::platform::window
       quark::backend::presentation
-      quark::backend::render
+
+      quark::render
       quark::engine::geometry
+      quark::platform::window
     PRIVATE
       Vulkan::Vulkan
 )

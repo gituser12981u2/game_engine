@@ -12,8 +12,9 @@ target_include_directories(quark_engine_assets_stb_image
 
 target_link_libraries(quark_engine_assets_gltf
     PUBLIC 
-      glm::glm
-      quark::backend::render
+        glm::glm
+
+        quark::render
 )
 
 add_library(quark::engine::assets::stb_image ALIAS quark_engine_assets_stb_image)

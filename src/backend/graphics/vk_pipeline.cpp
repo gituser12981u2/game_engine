@@ -1,6 +1,6 @@
 #include "vk_pipeline.hpp"
 
-#include "backend/resources/vk_vertex_layout.hpp"
+#include "backend/gpu/vk_vertex_layout.hpp"
 #include "backend/shaders/vk_shader.hpp"
 
 #include <array>

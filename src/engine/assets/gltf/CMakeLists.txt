@@ -7,15 +7,16 @@ add_library(quark_engine_assets_gltf STATIC
 
 target_include_directories(quark_engine_assets_gltf
     PUBLIC
-      ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src
     PRIVATE
-      ${CGLTF_INCLUDE_DIRS}
+        ${CGLTF_INCLUDE_DIRS}
 )
 
 target_link_libraries(quark_engine_assets_gltf
     PUBLIC 
-      glm::glm
-      quark::backend::render
+        glm::glm
+
+        quark::render
 )
 
 add_library(quark::engine::assets::gltf ALIAS quark_engine_assets_gltf)
