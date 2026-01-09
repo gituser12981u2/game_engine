@@ -1,7 +1,6 @@
 add_library(quark_render_rendergraph STATIC 
     main_pass.cpp
     swapchain_targets.cpp
-    framebuffer_cache.cpp
 )
 
 target_include_directories(quark_render_rendergraph
@@ -14,7 +13,6 @@ target_link_libraries(quark_render_rendergraph
         Vulkan::Vulkan
 
         quark::backend::core
-        quark::backend::frame
         quark::backend::presentation
         quark::backend::graphics
 
@@ -23,5 +21,3 @@ target_link_libraries(quark_render_rendergraph
 )
 
 add_library(quark::render::rendergraph ALIAS quark_render_rendergraph)
-
-

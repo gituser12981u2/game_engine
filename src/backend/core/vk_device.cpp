@@ -62,6 +62,15 @@ void logQueueFamilyProps(VkPhysicalDevice physicalDevice,
        props.timestampValidBits);
 }
 
+bool supportsVulkan13(VkPhysicalDevice device) {
+  VkPhysicalDeviceProperties props{};
+  vkGetPhysicalDeviceProperties(device, &props);
+
+  const uint32_t api = props.apiVersion;
+  return (VK_VERSION_MAJOR(api) > 1) ||
+         (VK_VERSION_MAJOR(api) == 1 && VK_VERSION_MINOR(api) >= 3);
+}
+
 struct QueueFamilyIndices {
   std::optional<uint32_t> graphicsFamily;
 
@@ -147,6 +156,18 @@ bool supportsTimestamps(VkPhysicalDevice device, uint32_t graphicsFamily) {
   return q[graphicsFamily].timestampValidBits != 0;
 }
 
+bool supportsDynamicRendering(VkPhysicalDevice device) {
+  VkPhysicalDeviceDynamicRenderingFeatures dyn{};
+  dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+
+  VkPhysicalDeviceFeatures2 feats2{};
+  feats2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  feats2.pNext = &dyn;
+
+  vkGetPhysicalDeviceFeatures2(device, &feats2);
+  return dyn.dynamicRendering == VK_TRUE;
+}
+
 } // namespace
 
 bool VkDeviceCtx::init(VkInstance instance) {
@@ -187,6 +208,16 @@ bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
   vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
   for (VkPhysicalDevice device : devices) {
+    // if (!supportsVulkan13(device)) {
+    //   LOGW("Skipping device: Vulkan < 1.3");
+    //   continue;
+    // }
+
+    if (!supportsDynamicRendering(device)) {
+      LOGW("Skipping device: dynamicRendering not supported");
+      continue;
+    }
+
     QueueFamilyIndices indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
     // TODO: Use scoring function to pick best graphics (i.e discrete >
@@ -238,8 +269,13 @@ bool VkDeviceCtx::createLogicalDevice() {
 
   VkPhysicalDeviceFeatures deviceFeatures{};
 
+  VkPhysicalDeviceDynamicRenderingFeatures dyn{};
+  dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+  dyn.dynamicRendering = VK_TRUE;
+
   VkDeviceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+  createInfo.pNext = &dyn;
   createInfo.queueCreateInfoCount = 1;
   createInfo.pQueueCreateInfos = &queueCreateInfo;
   createInfo.pEnabledFeatures = &deviceFeatures;

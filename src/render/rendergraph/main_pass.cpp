@@ -29,8 +29,6 @@ bool MainPass::init(VkBackendCtx &ctx, VkPresenter &presenter,
 
 void MainPass::shutdown() noexcept {
   m_pipeline.shutdown();
-  m_renderPass.shutdown();
-
   m_lastColorFormat = VK_FORMAT_UNDEFINED;
   m_lastDepthFormat = VK_FORMAT_UNDEFINED;
   m_initialized = false;
@@ -65,29 +63,23 @@ bool MainPass::recreateIfNeeded(VkBackendCtx &ctx, VkPresenter &presenter,
                  vertSpvPath, fragSpvPath);
 }
 
-bool MainPass::rebuild(VkBackendCtx &ctx, VkFormat colorFmt, VkFormat depthFmt,
-                       VkPipelineLayout layout, const std::string &vertSpvPath,
+bool MainPass::rebuild(VkBackendCtx &ctx, VkFormat colorFormat,
+                       VkFormat depthFormat, VkPipelineLayout layout,
+                       const std::string &vertSpvPath,
                        const std::string &fragSpvPath) {
 
   VkDevice device = ctx.device();
 
   m_pipeline.shutdown();
-  m_renderPass.shutdown();
 
-  if (!m_renderPass.init(device, colorFmt, depthFmt)) {
-    std::cerr << "[Mainpass] render pass init failed\n";
-    shutdown();
-    return false;
-  }
-
-  if (!m_pipeline.init(device, m_renderPass.handle(), layout, vertSpvPath,
+  if (!m_pipeline.init(device, colorFormat, depthFormat, layout, vertSpvPath,
                        fragSpvPath)) {
     std::cerr << "[MainPass] graphics pipeline init failed\n";
     shutdown();
     return false;
   }
 
-  m_lastColorFormat = colorFmt;
-  m_lastDepthFormat = depthFmt;
+  m_lastColorFormat = colorFormat;
+  m_lastDepthFormat = depthFormat;
   return true;
 }

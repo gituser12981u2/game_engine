@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 // Owns VulkanSwapchain and VkSurfaceKHR
@@ -41,6 +42,9 @@ public:
 
   [[nodiscard]] VkFormat colorFormat() const {
     return m_swapchain.swapchainImageFormat();
+  }
+  [[nodiscard]] const std::vector<VkImage> &colorImages() const {
+    return m_swapchain.swapchainImages();
   }
   [[nodiscard]] const std::vector<VkImageView> &colorViews() const {
     return m_swapchain.swapchainImageViews();

@@ -9,7 +9,6 @@
 #include "backend/profiling/upload_profiler.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 
-#include "render/rendergraph/framebuffer_cache.hpp"
 #include "render/rendergraph/main_pass.hpp"
 #include "render/rendergraph/swapchain_targets.hpp"
 
@@ -68,7 +67,6 @@ public:
     m_targets = std::move(other.m_targets);
     m_interface = std::move(other.m_interface);
     m_mainPass = std::move(other.m_mainPass);
-    m_fbos = std::move(other.m_fbos);
 
     m_commands = std::move(other.m_commands);
     m_frames = std::move(other.m_frames);
@@ -126,11 +124,13 @@ public:
 private:
   bool createDefaultMaterial() noexcept;
 
-  void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent,
+  void recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
+                   const SwapchainTargets &targets, uint32_t imageIndex,
                    MeshHandle mesh, uint32_t material,
                    glm::vec3 pos = {0, 0, 0}, glm::vec3 rotRad = {0, 0, 0},
                    glm::vec3 scale = {1, 1, 1});
-  void recordFrame(VkCommandBuffer cmd, VkFramebuffer fb, VkExtent2D extent,
+  void recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
+                   const SwapchainTargets &targets, uint32_t imageIndex,
                    std::span<const DrawItem> items);
 
   CpuProfiler m_cpuProfiler;
@@ -144,7 +144,6 @@ private:
   SwapchainTargets m_targets;
   VkShaderInterface m_interface;
   MainPass m_mainPass;
-  FramebufferCache m_fbos;
 
   VkCommands m_commands;
   UploadManager m_uploads;

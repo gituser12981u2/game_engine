@@ -1,12 +1,14 @@
 #include "renderer.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "backend/presentation/vk_presenter.hpp"
 #include "backend/profiling/cpu_profiler.hpp"
 #include "backend/profiling/profiling_logger.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 #include "engine/geometry/transform.hpp"
 #include "engine/logging/log.hpp"
 #include "engine/mesh/mesh_data.hpp"
+#include "render/rendergraph/swapchain_targets.hpp"
 #include "render/resources/mesh_gpu.hpp"
 #include "render/resources/mesh_store.hpp"
 #include "render/scene/push_constants.hpp"
@@ -117,13 +119,6 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  // Create frame buffers
-  if (!m_fbos.init(*m_ctx, presenter, m_targets, m_mainPass)) {
-    LOGE("Failed to initialize framebuffer objects");
-    shutdown();
-    return false;
-  }
-
   // Create command pool
   if (!m_commands.init(*m_ctx)) {
     LOGE("Failed to initialize renderer command pool");
@@ -220,7 +215,6 @@ void Renderer::shutdown() noexcept {
   m_scene.shutdown();
 
   // Swapchain-dependents
-  m_fbos.shutdown();
   m_mainPass.shutdown();
   m_interface.shutdown();
   m_targets.shutdown();
@@ -233,25 +227,52 @@ void Renderer::shutdown() noexcept {
   m_fragPath.clear();
 }
 
-void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
-                           VkExtent2D extent, const MeshHandle mesh,
-                           uint32_t material, glm::vec3 pos, glm::vec3 rotRad,
-                           glm::vec3 scale) {
+// TODO: move to utils
+static void transitionImage(VkCommandBuffer cmd, VkImage image,
+                            VkImageLayout oldLayout, VkImageLayout newLayout,
+                            VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+                            VkPipelineStageFlags srcStage,
+                            VkPipelineStageFlags dstStage,
+                            VkImageAspectFlags aspectMask) {
+  VkImageMemoryBarrier barrier{};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.oldLayout = oldLayout;
+  barrier.newLayout = newLayout;
+  barrier.srcAccessMask = srcAccess;
+  barrier.dstAccessMask = dstAccess;
+  barrier.image = image;
+  barrier.subresourceRange.aspectMask = aspectMask;
+  barrier.subresourceRange.baseMipLevel = 0;
+  barrier.subresourceRange.levelCount = 1;
+  barrier.subresourceRange.baseArrayLayer = 0;
+  barrier.subresourceRange.layerCount = 1;
+
+  vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
+                       &barrier);
+}
+
+void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
+                           const SwapchainTargets &targets, uint32_t imageIndex,
+                           const MeshHandle mesh, uint32_t material,
+                           glm::vec3 pos, glm::vec3 rotRad, glm::vec3 scale) {
   DrawItem item{};
   item.mesh = mesh;
   item.material = material;
   item.model = engine::makeModel(pos, rotRad, scale);
 
-  recordFrame(cmd, fb, extent, std::span<const DrawItem>(&item, 1));
+  recordFrame(cmd, presenter, targets, imageIndex,
+              std::span<const DrawItem>(&item, 1));
 }
 
-void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
-                           VkExtent2D extent, std::span<const DrawItem> items) {
+void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
+                           const SwapchainTargets &targets, uint32_t imageIndex,
+                           std::span<const DrawItem> items) {
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   vkBeginCommandBuffer(cmd, &beginInfo);
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
+  VkExtent2D extent = presenter.swapchainExtent();
 
   m_gpuProfiler.beginFrameCmd(cmd, frameIndex);
   m_gpuProfiler.markFrameBegin(cmd, frameIndex);
@@ -261,17 +282,42 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
   clears[1].depthStencil =
       VkClearDepthStencilValue{.depth = 1.0F, .stencil = 0};
 
-  VkRenderPassBeginInfo rpBegin{};
-  rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-  rpBegin.renderPass = m_mainPass.renderPass();
-  rpBegin.framebuffer = fb;
-  rpBegin.renderArea.offset = VkOffset2D{0, 0};
-  rpBegin.renderArea.extent = extent;
-  rpBegin.clearValueCount = static_cast<uint32_t>(clears.size());
-  rpBegin.pClearValues = clears.data();
+  VkImage scImg = presenter.colorImages()[imageIndex];
+  VkImageView scView = presenter.colorViews()[imageIndex];
+  VkImageView depthView = targets.depthViews()[imageIndex];
+
+  transitionImage(
+      cmd, scImg, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+  VkRenderingAttachmentInfo colorAttach{};
+  colorAttach.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  colorAttach.imageView = scView;
+  colorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  colorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  colorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  colorAttach.clearValue = clears[0];
+
+  VkRenderingAttachmentInfo depthAttach{};
+  depthAttach.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  depthAttach.imageView = depthView;
+  depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+  depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  depthAttach.clearValue = clears[1];
+
+  VkRenderingInfo renderingInfo{};
+  renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderingInfo.renderArea = {{0, 0}, extent};
+  renderingInfo.layerCount = 1;
+  renderingInfo.colorAttachmentCount = 1;
+  renderingInfo.pColorAttachments = &colorAttach;
+  renderingInfo.pDepthAttachment = &depthAttach;
 
   m_gpuProfiler.markMainPassBegin(cmd, frameIndex);
-  vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+  vkCmdBeginRendering(cmd, &renderingInfo);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     m_mainPass.pipeline());
   m_cpuProfiler.incPipelineBinds(1);
@@ -371,8 +417,14 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkFramebuffer fb,
     }
   }
 
-  vkCmdEndRenderPass(cmd);
+  vkCmdEndRendering(cmd);
   m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
+
+  transitionImage(
+      cmd, scImg, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
   m_gpuProfiler.markFrameEnd(cmd, frameIndex);
   vkEndCommandBuffer(cmd);
@@ -435,7 +487,7 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   {
     CpuProfiler::Scope s(m_cpuProfiler, CpuProfiler::Stat::RecordCmd);
-    recordFrame(cmd, m_fbos.at(imageIndex), presenter.swapchainExtent(), items);
+    recordFrame(cmd, presenter, m_targets, imageIndex, items);
   }
 
   if (!m_uploads.flushAll(false)) {
@@ -481,8 +533,6 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
     vkDeviceWaitIdle(device);
   }
 
-  m_fbos.shutdown();
-
   if (!presenter.recreateSwapchain()) {
     LOGE("Swapchain recreation failed");
     return false;
@@ -494,11 +544,6 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
 
   if (!m_mainPass.recreateIfNeeded(*m_ctx, presenter, m_targets, m_interface,
                                    vertSpvPath, fragSpvPath)) {
-    return false;
-  }
-
-  // Recreate framebuffers
-  if (!m_fbos.rebuild(*m_ctx, presenter, m_targets, m_mainPass)) {
     return false;
   }
 

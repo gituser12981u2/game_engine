@@ -1,6 +1,7 @@
 # Work in Progress Game Engine for Quake-Style Game
 
-This engine shall be written from scratch in Vulkan, targeting macOS, Windows, and Linux.
+This engine shall be written from scratch in Vulkan, targeting macOS, Windows, and Linux. This only supports devices 
+with Vulkan 1.3+ or above, for dynamic rendering mainly.
 
 The engine shall support
 - Custom Physics Engine
@@ -8,7 +9,10 @@ The engine shall support
 - Animations
 - Water Rendering
 - Multiple Pipelines
-- GUI Editor?
+- GUI Editor
+
+Advanced possible supports
+- Virtualized Geometry 
 
 The game that shall be made with this engine is a game with movement inspired by quake.
 The game shall feature older-quake-like graphics and will likely have a single player,

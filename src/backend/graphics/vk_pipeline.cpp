@@ -2,20 +2,31 @@
 
 #include "backend/gpu/vk_vertex_layout.hpp"
 #include "backend/shaders/vk_shader.hpp"
+#include "engine/logging/log.hpp"
 
 #include <array>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 #include <vulkan/vulkan_core.h>
 
-bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
+DEFINE_TU_LOGGER("Backend.Graphics.Pipeline");
+#define LOG_TU_LOGGER() ThisLogger()
+
+bool VkGraphicsPipeline::init(VkDevice device, VkFormat colorFormat,
+                              VkFormat depthFormat,
                               VkPipelineLayout pipelineLayout,
                               const std::string &vertSpvPath,
                               const std::string &fragSpvPath) {
-  if (device == VK_NULL_HANDLE || renderPass == VK_NULL_HANDLE) {
-    std::cerr << "[Pipeline] Device or render pass not initialized\n";
+  if (depthFormat == VK_FORMAT_UNDEFINED) {
+    LOGE("depthFormat is undefeind");
+    return false;
+  }
+
+  if (colorFormat == VK_FORMAT_UNDEFINED) {
+    LOGE("colorFormat is undefeind");
     return false;
   }
 
@@ -55,7 +66,8 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 
   const std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{vertStage,
                                                                     fragStage};
-  if (!createGraphicsPipeline(renderPass, pipelineLayout, shaderStages.data(),
+  if (!createGraphicsPipeline(colorFormat, depthFormat, pipelineLayout,
+                              shaderStages.data(),
                               static_cast<uint32_t>(shaderStages.size()))) {
     shutdown();
     return false;
@@ -66,8 +78,9 @@ bool VkGraphicsPipeline::init(VkDevice device, VkRenderPass renderPass,
 }
 
 bool VkGraphicsPipeline::createGraphicsPipeline(
-    VkRenderPass renderPass, VkPipelineLayout pipelineLayout,
+    VkFormat colorFormat, VkFormat depthFormat, VkPipelineLayout pipelineLayout,
     const VkPipelineShaderStageCreateInfo *stages, uint32_t stageCount) {
+
   VkVertexInputBindingDescription binding =
       vk_vertex_layout::bindingDescription();
   auto attributes = vk_vertex_layout::attributeDescriptions();
@@ -145,9 +158,17 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
   depth.depthBoundsTestEnable = VK_FALSE;
   depth.stencilTestEnable = VK_FALSE;
 
+  VkPipelineRenderingCreateInfo rendering{};
+  rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+  rendering.colorAttachmentCount = 1;
+  rendering.pColorAttachmentFormats = &colorFormat;
+  rendering.depthAttachmentFormat = depthFormat;
+  rendering.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
   // Graphics pipeline
   VkGraphicsPipelineCreateInfo pipelineInfo{};
   pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  pipelineInfo.pNext = &rendering;
   pipelineInfo.stageCount = stageCount;
   pipelineInfo.pStages = stages;
   pipelineInfo.pVertexInputState = &vertexInput;
@@ -158,8 +179,8 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
   pipelineInfo.pDepthStencilState = &depth;
   pipelineInfo.pColorBlendState = &colorBlending;
   pipelineInfo.pDynamicState = &dynamicState;
+  pipelineInfo.renderPass = VK_NULL_HANDLE; // dynamic rendering
   pipelineInfo.layout = pipelineLayout;
-  pipelineInfo.renderPass = renderPass;
   pipelineInfo.subpass = 0;
   pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
   pipelineInfo.basePipelineIndex = -1;

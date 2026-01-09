@@ -30,7 +30,7 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, VkRenderPass renderPass,
+  bool init(VkDevice device, VkFormat colorFormat, VkFormat depthFormat,
             VkPipelineLayout pipelineLayout, const std::string &vertSpvPath,
             const std::string &fragSpvPath);
   void shutdown() noexcept;
@@ -43,9 +43,11 @@ public:
   }
 
 private:
-  [[nodiscard]] bool createGraphicsPipeline(
-      VkRenderPass renderPass, VkPipelineLayout pipelineLayout,
-      const VkPipelineShaderStageCreateInfo *stages, uint32_t stageCount);
+  [[nodiscard]] bool
+  createGraphicsPipeline(VkFormat colorFormat, VkFormat depthFormat,
+                         VkPipelineLayout pipelineLayout,
+                         const VkPipelineShaderStageCreateInfo *stages,
+                         uint32_t stageCount);
 
   VkDevice m_device = VK_NULL_HANDLE;             // non-owning
   VkPipeline m_graphicsPipeline = VK_NULL_HANDLE; // owning

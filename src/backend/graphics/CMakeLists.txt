@@ -1,6 +1,5 @@
 add_library(quark_backend_graphics STATIC 
     vk_pipeline.cpp
-    vk_render_pass.cpp
     vk_framebuffers.cpp
 )
 
