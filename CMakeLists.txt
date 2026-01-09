@@ -15,6 +15,9 @@ find_package(glm CONFIG REQUIRED)
 
 find_package(Stb REQUIRED)
 
+find_package(spdlog CONFIG REQUIRED)
+
+
 find_path(CGLTF_INCLUDE_DIRS "cgltf.h")
 
 add_compile_options(

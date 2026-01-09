@@ -3,12 +3,14 @@
 #include "engine/assets/gltf/gltf_asset.hpp"
 #include "engine/camera/camera.hpp"
 #include "engine/geometry/transform.hpp"
+#include "engine/logging/log.hpp"
 #include "platform/input/camera_controller.hpp"
 #include "render/renderer.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
 
 #include <GLFW/glfw3.h>
+#include <cmath>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -62,6 +64,9 @@ static void pushCubeGrid(std::vector<DrawItem> &out, MeshHandle mesh,
 }
 
 int main() {
+  log::init();
+  LOG_INFO("Engine starting...");
+
   EngineApp app;
   AppConfig cfg{};
   cfg.title = "Hello Window";

@@ -1,11 +1,16 @@
 #include "vk_instance.hpp"
 
+#include "engine/logging/log.hpp"
+
+#include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <span>
 #include <vector>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+
+DEFINE_TU_LOGGER("Backend.Instance");
+#define LOG_TU_LOGGER() ThisLogger()
 
 #ifndef NDEBUG
 constexpr bool kEnableValidationLayers = true;
@@ -27,7 +32,7 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   (void)messageTypes;
   (void)pUserData;
 
-  std::cerr << "Validation layer: " << pCallbackData->pMessage << "\n";
+  LOGE("Validation layer: {}", pCallbackData->pMessage);
   return VK_FALSE;
 }
 
@@ -108,7 +113,7 @@ bool checkValidationLayerSupport() {
       }
     }
     if (!found) {
-      std::cerr << "Validation layer not found:" << layerName << "\n";
+      LOGE("Validation layer not found: {}", layerName);
       return false;
     }
   }
@@ -121,8 +126,11 @@ bool VkInstanceCtx::init(std::span<const char *const> platformExtensions,
                          bool enableValidationLayers) {
   m_enableValidationLayers = enableValidationLayers && kEnableValidationLayers;
 
+  LOGD("Validation requested={}, effective={}", enableValidationLayers,
+       m_enableValidationLayers);
+
   if (m_enableValidationLayers && !checkValidationLayerSupport()) {
-    std::cerr << "Requested validation layers not available\n";
+    LOGE("Requested validation layers not available");
     return false;
   }
 
@@ -131,8 +139,9 @@ bool VkInstanceCtx::init(std::span<const char *const> platformExtensions,
   }
 
   if (m_enableValidationLayers && !setupDebugMessenger()) {
-    std::cerr << "Failed to set up debug messenger\n";
-    // Non fatal
+    LOGW("Failed to setup debug messenger");
+  } else {
+    LOGD("Debug messenger created");
   }
 
   return true;
@@ -140,11 +149,13 @@ bool VkInstanceCtx::init(std::span<const char *const> platformExtensions,
 
 void VkInstanceCtx::shutdown() noexcept {
   if (m_enableValidationLayers && m_debugMessenger != VK_NULL_HANDLE) {
+    LOGD("Debug utils messenger was destroyed");
     DestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
     m_debugMessenger = VK_NULL_HANDLE;
   }
 
   if (m_instance != VK_NULL_HANDLE) {
+    LOGD("Instance was destroyed");
     vkDestroyInstance(m_instance, nullptr);
     m_instance = VK_NULL_HANDLE;
   }
@@ -160,11 +171,11 @@ bool VkInstanceCtx::setupDebugMessenger() {
   VkDebugUtilsMessengerCreateInfoEXT createInfo{};
   populateDebugMessengerCreateInfo(createInfo);
 
-  VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &createInfo,
-                                                 nullptr, &m_debugMessenger);
-  if (result != VK_SUCCESS) {
-    std::cerr << "CreateDebugUtilsMessengerEXT failed with error code: "
-              << result << "\n";
+  VkResult res = CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr,
+                                              &m_debugMessenger);
+  if (res != VK_SUCCESS) {
+    LOGE("CreateDebugUtilsMessengerEXT failed with error code: {}",
+         static_cast<int>(res));
     return false;
   }
 
@@ -183,6 +194,11 @@ bool VkInstanceCtx::createInstance(
 
   auto extensions =
       getRequiredExtensions(m_enableValidationLayers, platformExtensions);
+
+  LOGD("Enabled instance extensions ({}):", extensions.size());
+  for (const char *ext : extensions) {
+    LOGD("  {}", ext);
+  }
 
   VkInstanceCreateInfo createInfo = {};
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -209,9 +225,10 @@ bool VkInstanceCtx::createInstance(
     createInfo.pNext = nullptr;
   }
 
-  VkResult result = vkCreateInstance(&createInfo, nullptr, &m_instance);
-  if (result != VK_SUCCESS) {
-    std::cerr << "vkCreateInstance failed with error code: " << result << "\n";
+  VkResult res = vkCreateInstance(&createInfo, nullptr, &m_instance);
+  if (res != VK_SUCCESS) {
+    LOGE("vkCreateInstance failed with error code: {}",
+         static_cast<uint32_t>(res));
     return false;
   }
 

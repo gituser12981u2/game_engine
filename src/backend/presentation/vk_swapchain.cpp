@@ -1,10 +1,15 @@
 #include "vk_swapchain.hpp"
 
+#include "engine/logging/log.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+DEFINE_TU_LOGGER("Backend.Instance");
+#define LOG_TU_LOGGER() ThisLogger()
 
 VkSwapchain::SwapChainSupportDetails
 VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
@@ -30,6 +35,9 @@ VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
     vkGetPhysicalDeviceSurfacePresentModesKHR(
         device, surface, &presentModeCount, details.presentModes.data());
   }
+
+  LOGD("Swapchain Capabilites: minImageCount={}, maxImageCount={}",
+       details.capabilities.minImageCount, details.capabilities.maxImageCount);
 
   std::cout << "[Swapchain] Capabilites:"
             << " minImageCount=" << details.capabilities.minImageCount

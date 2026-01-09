@@ -1,5 +1,7 @@
 #include "app.hpp"
 
+#include "engine/logging/log.hpp"
+
 #include <GLFW/glfw3.h>
 #include <functional>
 #include <iostream>
@@ -14,6 +16,8 @@ bool EngineApp::init(const AppConfig &cfg) {
     std::cerr << "[App] Failed to init window\n";
     return false;
   }
+
+  LOG_INFO("App initialized");
 
   const auto platformExtensions = m_window.requiredVulkanExtensions();
   if (platformExtensions.empty()) {

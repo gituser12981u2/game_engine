@@ -5,6 +5,7 @@
 #include "backend/profiling/profiling_logger.hpp"
 #include "backend/profiling/vk_gpu_profiler.hpp"
 #include "engine/geometry/transform.hpp"
+#include "engine/logging/log.hpp"
 #include "engine/mesh/mesh_data.hpp"
 #include "render/resources/mesh_gpu.hpp"
 #include "render/resources/mesh_store.hpp"
@@ -19,12 +20,25 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
-#include <iostream>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+DEFINE_TU_LOGGER("Render.Renderer");
+#define LOG_TU_LOGGER() ThisLogger()
+
+static constexpr VkDeviceSize kMiB = 1024ULL * 1024ULL;
+
+// 8 MiB
+static constexpr VkDeviceSize kUploadStaticBudgetPerFrame = 8ULL * kMiB;
+
+// 2 MiB
+static constexpr VkDeviceSize kUploadFrameBudgetPerFrame = 2ULL * kMiB;
+
+static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
+static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
 struct BatchKey {
   MeshHandle mesh;
@@ -50,12 +64,12 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
       ctx.physicalDevice() == VK_NULL_HANDLE ||
       ctx.graphicsQueue() == VK_NULL_HANDLE ||
       ctx.graphicsQueueFamily() == UINT32_MAX) {
-    std::cerr << "[Renderer] backend ctx not initialized\n";
+    LOGE("Backend context not initialized");
     return false;
   }
 
   if (framesInFlight == 0) {
-    std::cerr << "[Renderer] framesInFlight must be > 0\n";
+    LOGE("FramesInFlight must be > 0");
     return false;
   }
 
@@ -66,24 +80,31 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   m_vertPath = vertSpvPath;
   m_fragPath = fragSpvPath;
 
+  LOGI("Renderer initialized: framesInFlight={} | shaders: vert='{}' frag='{}' "
+       "| "
+       "uploadMiB: static={} frame={} | caps: instances={} materials={}",
+       framesInFlight, vertSpvPath, fragSpvPath,
+       kUploadStaticBudgetPerFrame / kMiB, kUploadFrameBudgetPerFrame / kMiB,
+       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials);
+
   VkDevice device = m_ctx->device();
 
   if (!m_gpuProfiler.init(*m_ctx, m_framesInFlight)) {
-    std::cerr << "[Renderer] Failed to init GPU profiler\n";
+    LOGE("Failed to intiailize GPU profiler");
     shutdown();
     return false;
   }
 
   // Create swapchain targets
   if (!m_targets.init(*m_ctx, presenter)) {
-    std::cerr << "[Renderer] Failed to create depth targets\n";
+    LOGE("Failed to initialize swapchain depth targets");
     shutdown();
     return false;
   }
 
   // Create shader interface
   if (!m_interface.init(device)) {
-    std::cerr << "[Renderer] Failed to create shader interface\n";
+    LOGE("Failed to initialize shader interface");
     shutdown();
     return false;
   }
@@ -91,66 +112,56 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   // Create main pass
   if (!m_mainPass.init(*m_ctx, presenter, m_targets, m_interface, m_vertPath,
                        m_fragPath)) {
-    std::cerr << "[Renderer] Failed to init main pass\n";
+    LOGE("Failed to initialize main pass");
     shutdown();
     return false;
   }
 
   // Create frame buffers
   if (!m_fbos.init(*m_ctx, presenter, m_targets, m_mainPass)) {
-    std::cerr << "[Renderer] Failed to create framebuffers\n";
+    LOGE("Failed to initialize framebuffer objects");
     shutdown();
     return false;
   }
 
   // Create command pool
   if (!m_commands.init(*m_ctx)) {
-    std::cerr << "[Renderer] Failed to create the command pool\n";
+    LOGE("Failed to initialize renderer command pool");
     shutdown();
     return false;
   }
-
-  // 8 MiB per frame for now
-  static constexpr VkDeviceSize kUploadStaticBudgetPerFrame =
-      8ULL * 1024ULL * 1024ULL;
-
-  // 2 MiB
-  static constexpr VkDeviceSize kUploadFrameBudgetPerFrame =
-      2ULL * 1024ULL * 1024ULL;
+  LOGI("Main render pass initialized");
 
   if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudgetPerFrame,
                       kUploadFrameBudgetPerFrame, &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init upload manager\n";
+    LOGE("Failed to initialize upload manager");
     shutdown();
     return false;
   }
 
   if (!m_uploads.beginFrame(0)) {
-    std::cerr << "[Renderer] Failed to begin init upload frame\n";
+    LOGE("Failed to begin upload frame");
     shutdown();
     return false;
   }
 
-  static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
-  static constexpr uint32_t kRequestedMaxMaterials = 1024U;
-
   if (!m_scene.init(*m_ctx, m_framesInFlight, m_interface,
                     kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials,
                     &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init per-frame data\n";
+    LOGE("Failed to initialize scene data");
     shutdown();
     return false;
   }
 
   if (!m_scene.rebindUpload(m_uploads.frame(), &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to bind scene uploader\n";
+    LOGE("Failed to bind scene uploader");
     shutdown();
     return false;
   }
 
   if (!m_resources.init(*m_ctx, m_uploads.statik(), m_interface, m_scene,
                         &m_uploadProfiler)) {
-    std::cerr << "[Renderer] Failed to init resource store\n";
+    LOGE("Failed to initialize resources store");
     shutdown();
     return false;
   }
@@ -160,27 +171,28 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
 
   // Create a 1x1 default white texture and material
   if (!m_resources.materials().createDefaultMaterial()) {
-    std::cerr << "[Renderer] Failed to create the default material";
+    LOGE("Failed to create the default material");
     shutdown();
     return false;
   }
+  LOGD("Default material created");
 
   // Submit + wait for default material
   if (!m_uploads.flushStatic(false)) {
-    std::cerr << "[Renderer] Failed to flush init uploads\n";
+    LOGE("Failed to flush static uploads");
     shutdown();
     return false;
   }
 
   // Allocate buffer per frame
   if (!m_commands.allocate(m_framesInFlight)) {
-    std::cerr << "[Renderer] Failed to allocate command buffers\n";
+    LOGE("Failed to allocate command buffer");
     shutdown();
     return false;
   }
 
   if (!m_frames.init(device, m_framesInFlight, presenter.imageCount())) {
-    std::cerr << "[Renderer] Failed to create frame sync objects\n";
+    LOGE("Failed to initialize frame sync objects");
     shutdown();
     return false;
   }
@@ -409,7 +421,7 @@ bool Renderer::drawFrame(VkPresenter &presenter,
   const uint32_t frameIndex = m_frames.currentFrameIndex();
 
   if (!m_uploads.beginFrame(frameIndex)) {
-    std::cerr << "[Renderer] Failed to begin uploads\n";
+    LOGE("Failed to begin uploads for frame {}", frameIndex);
     return false;
   }
 
@@ -427,7 +439,7 @@ bool Renderer::drawFrame(VkPresenter &presenter,
   }
 
   if (!m_uploads.flushAll(false)) {
-    std::cerr << "[Renderer] Failed to flush\n";
+    LOGW("Failed to flush");
   }
 
   FrameStatus sub = m_frames.submit(
@@ -456,6 +468,7 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
                                           const std::string &vertSpvPath,
                                           const std::string &fragSpvPath) {
+  LOGW("Recreating swapchain-dependent resources");
   profiling::EventScope scope(profiling::Event::SwapchainRecreate);
 
   if (m_ctx == nullptr || m_ctx->device() == VK_NULL_HANDLE) {
@@ -471,6 +484,7 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   m_fbos.shutdown();
 
   if (!presenter.recreateSwapchain()) {
+    LOGE("Swapchain recreation failed");
     return false;
   }
 
@@ -489,6 +503,8 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
   }
 
   const uint32_t imageCount = presenter.imageCount();
+  LOGI("Swapchain-dependent resources recreated (images={})", imageCount);
+
   return m_frames.onSwapchainRecreated(imageCount);
 }
 

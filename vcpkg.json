@@ -6,6 +6,7 @@
     "glm",
     "stb",
     "cgltf",
+    "spdlog",
     "vulkan-memory-allocator"
   ]
 }

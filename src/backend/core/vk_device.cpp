@@ -1,12 +1,16 @@
 #include "vk_device.hpp"
 
+#include "engine/logging/log.hpp"
+
 #include <cstdint>
-#include <iostream>
 #include <optional>
 #include <set>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+DEFINE_TU_LOGGER("Backend.Device");
+#define LOG_TU_LOGGER() ThisLogger()
 
 namespace {
 
@@ -20,6 +24,43 @@ constexpr std::array<const char *, 1> kDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 #endif
+
+void logPhysicalDeviceInfo(VkPhysicalDevice physicalDevice) {
+  VkPhysicalDeviceProperties props{};
+  vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+  LOGI("GPU selected: '{}', apiVersion={}.{}.{} vendorID=0x{:04x} "
+       "deviceID=0x{:04x}",
+       props.deviceName, VK_VERSION_MAJOR(props.apiVersion),
+       VK_VERSION_MINOR(props.apiVersion), VK_VERSION_PATCH(props.apiVersion),
+       props.vendorID, props.deviceID);
+}
+
+void logEnabledDeviceExtensions() {
+  LOGD("Enabled device extensions ({}):", kDeviceExtensions.size());
+  for (const char *ext : kDeviceExtensions) {
+    LOGI("  {}", ext);
+  }
+}
+
+void logQueueFamilyProps(VkPhysicalDevice physicalDevice,
+                         uint32_t familyIndex) {
+  uint32_t count = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, nullptr);
+  std::vector<VkQueueFamilyProperties> q(count);
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, q.data());
+
+  if (familyIndex >= count) {
+    LOGW("Queue family index {} out of range (count={})", familyIndex, count);
+    return;
+  }
+
+  const VkQueueFamilyProperties &props = q[familyIndex];
+  LOGI("Using graphics queue family {}: queueConut={}, flags=0x{:x}, "
+       "timestampValidBits={}",
+       familyIndex, props.queueCount, props.queueFlags,
+       props.timestampValidBits);
+}
 
 struct QueueFamilyIndices {
   std::optional<uint32_t> graphicsFamily;
@@ -69,9 +110,9 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
   }
 
   if (!requiredExtensions.empty()) {
-    std::cerr << "Missing required device extensions:\n";
+    LOGE("Missing required device extensions: ");
     for (const auto &name : requiredExtensions) {
-      std::cerr << "  " << name << "\n";
+      LOGE("{}", name);
     }
     return false;
   }
@@ -110,12 +151,12 @@ bool supportsTimestamps(VkPhysicalDevice device, uint32_t graphicsFamily) {
 
 bool VkDeviceCtx::init(VkInstance instance) {
   if (!pickPhysicalDevice(instance)) {
-    std::cerr << "Failed to find a suitable physical device\n";
+    LOGE("Failed to find a suitable physical device (GPU)");
     return false;
   }
 
   if (!createLogicalDevice()) {
-    std::cerr << "Failed to create a logical device\n";
+    LOGE("Failed to create a logical device");
     return false;
   }
 
@@ -124,6 +165,7 @@ bool VkDeviceCtx::init(VkInstance instance) {
 
 void VkDeviceCtx::shutdown() noexcept {
   if (m_device != VK_NULL_HANDLE) {
+    LOGD("VkDevice destroyed");
     vkDestroyDevice(m_device, nullptr);
     m_device = VK_NULL_HANDLE;
   }
@@ -137,7 +179,7 @@ bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
   vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
   if (deviceCount == 0) {
-    std::cerr << "No Vulkan-capable GPUs found\n";
+    LOGE("No Vulkan-capable devices found");
     return false;
   }
 
@@ -154,32 +196,35 @@ bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
       const uint32_t graphicsFamily = indices.graphicsFamily.value();
 
       if (!supportsTimestamps(device, graphicsFamily)) {
-        std::cerr
-            << "[Device] Selected GPU likely lacks usable timestamp support\n";
+        LOGE("Selected device likely lacks usable timestamp support");
         continue;
       }
 
       m_physicalDevice = device;
       m_queues.graphicsFamily = graphicsFamily;
+
+      logPhysicalDeviceInfo(device);
+      logQueueFamilyProps(device, graphicsFamily);
+
+      logEnabledDeviceExtensions();
+
       return true;
     }
   }
 
-  std::cerr
-      << "Failed to find a GPU with required queue families and extensions\n";
+  LOGE("Failed to find a GPU with required queue familes and extensions");
   return false;
 }
 
 bool VkDeviceCtx::createLogicalDevice() {
   if (m_physicalDevice == VK_NULL_HANDLE) {
-    std::cerr
-        << "createLogicalDevice called without a selected physical device\n";
+    LOGE("createLogicalDevice called without a selected physical device");
     return false;
   }
 
   QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
   if (!indices.isComplete()) {
-    std::cerr << "Graphics queue family not found on selected device\n";
+    LOGE("Graphics queue family not found on selected device");
     return false;
   }
 
@@ -203,11 +248,11 @@ bool VkDeviceCtx::createLogicalDevice() {
       static_cast<uint32_t>(kDeviceExtensions.size());
   createInfo.ppEnabledExtensionNames = kDeviceExtensions.data();
 
-  VkResult result =
+  VkResult res =
       vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device);
 
-  if (result != VK_SUCCESS) {
-    std::cerr << "vkCreateDevice failed with error code: " << result << "\n";
+  if (res != VK_SUCCESS) {
+    LOGE("vkCreateDevice failed with error code {}", static_cast<int>(res));
     return false;
   }
 
