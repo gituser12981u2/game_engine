@@ -14,17 +14,9 @@
 
 // TODO take in backend ctx
 bool VkTextureUploader::init(VmaAllocator allocator, VkDevice device,
-                             VkUploadContext *upload,
                              UploadProfiler *profiler) {
-  if (allocator == nullptr || device == VK_NULL_HANDLE ||
-      upload == VK_NULL_HANDLE) {
-    std::cerr << "[TextureUpload] Invalid init args\n";
-    return false;
-  }
-
   m_allocator = allocator;
   m_device = device;
-  m_upload = upload;
   m_profiler = profiler;
 
   return true;
@@ -33,14 +25,15 @@ bool VkTextureUploader::init(VmaAllocator allocator, VkDevice device,
 void VkTextureUploader::shutdown() noexcept {
   m_allocator = nullptr;
   m_device = VK_NULL_HANDLE;
-  m_upload = nullptr;
   m_profiler = nullptr;
 }
 
-bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
-                                    uint32_t height, VkTexture2D &out) {
-  if (m_allocator == nullptr || m_upload == nullptr) {
-    std::cerr << "[TextureUpload] Not initialized\n";
+bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
+                                    const void *rgbaPixels, uint32_t width,
+                                    uint32_t height, VkTexture2D &out,
+                                    VkPipelineStageFlags finalStage) {
+  if (!recorder) {
+    std::cerr << "[TextureUpload] Invalid recorder\n";
     return false;
   }
 
@@ -49,10 +42,9 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
     return false;
   }
 
-  const VkDeviceSize size = static_cast<VkDeviceSize>(width) *
-                            static_cast<VkDeviceSize>(height) * 4ULL;
+  const VkDeviceSize size = VkDeviceSize(width) * VkDeviceSize(height) * 4ULL;
 
-  VkStagingAlloc stageAlloc = m_upload->allocStaging(size, /*alignment=*/16);
+  VkStagingAlloc stageAlloc = recorder.allocStaging(size, /*alignment=*/16);
   if (!stageAlloc) {
     std::cerr
         << "[TextureUpload] Out of staging space (increase per-frame budget "
@@ -70,7 +62,6 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
   out.shutdown();
 
   // TODO: check for VK_FORMAT_R8G8B8A8_UNORM
-  // TODO: move to images/
   if (!out.image.init2D(m_allocator, width, height, VK_FORMAT_R8G8B8A8_SRGB,
                         VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                             VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -83,9 +74,9 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
     profilerAdd(m_profiler, UploadProfiler::Stat::TextureAllocatedBytes, size);
   }
 
-  m_upload->cmdUploadRGBA8ToImage(out.image.handle(), width, height,
-                                  stageAlloc.offset,
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  recorder.cmdUploadRGBA8ToImage(
+      out.image.handle(), width, height, stageAlloc.offset,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, finalStage);
 
   if (m_profiler != nullptr) {
     profilerAdd(m_profiler, UploadProfiler::Stat::TextureUploadCount, 1);

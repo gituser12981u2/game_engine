@@ -3,6 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 #include "engine/geometry/mesh_factory.hpp"
+#include "engine/jobs/job_system.hpp"
 #include "platform/window/glfw_window.hpp"
 #include "render/renderer.hpp"
 
@@ -51,6 +52,7 @@ public:
 
 private:
   GlfwWindow m_window;
+  JobSystem m_jobs;
   VkBackendCtx m_ctx;
   VkPresenter m_presenter;
   Renderer m_renderer;

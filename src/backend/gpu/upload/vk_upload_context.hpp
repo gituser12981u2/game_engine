@@ -4,8 +4,10 @@
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/profiling/upload_profiler.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 struct VkStagingAlloc {
@@ -18,9 +20,51 @@ struct VkStagingAlloc {
 // TODO: check for transfer queue in queue family and use it
 // TODO: use timeline semaphore values to know when upload is complete
 // instead of offloading submits to a different command buffer
-
 class VkUploadContext {
 public:
+  enum class Mode : uint8_t {
+    FrameRing, // slice per frameIndex in [0, framesInflight)
+    OneShot,   // single reusable batch (not per frame)
+  };
+
+  class Recorder {
+  public:
+    Recorder() = default;
+
+    // Allocate space in the staging slice for the current frame.
+    VkStagingAlloc allocStaging(VkDeviceSize size, VkDeviceSize alignment = 16);
+
+    // Record a copy from staging -> buffer.
+    void cmdCopyToBuffer(VkBuffer dst, VkDeviceSize dstOffset,
+                         VkDeviceSize srcOffset, VkDeviceSize size);
+
+    // Record a buffer -> image upload for RGBA8 with layout transition:
+    // UNDEFINED -> TRANSFER_DST_OPTIMAL -> finalLayout
+    void cmdUploadRGBA8ToImage(VkImage image, uint32_t width, uint32_t height,
+                               VkDeviceSize srcOffset,
+                               VkImageLayout finalLayout,
+                               VkPipelineStageFlags finalStage);
+
+    void cmdBarrierBufferTransferToShader(VkBuffer buffer, VkDeviceSize offset,
+                                          VkDeviceSize size,
+                                          VkPipelineStageFlags dstStage);
+
+    [[nodiscard]] VkCommandBuffer cmd() const noexcept;
+
+    explicit operator bool() const noexcept { return m_ctx != nullptr; }
+
+  private:
+    friend class VkUploadContext;
+    Recorder(VkUploadContext *ctx, uint32_t frameIndex, uint32_t threadIndex)
+        : m_ctx(ctx), m_frameIndex(frameIndex), m_threadIndex(threadIndex) {}
+
+    void ensureBegun();
+
+    VkUploadContext *m_ctx = nullptr; // non-owning
+    uint32_t m_frameIndex = 0;
+    uint32_t m_threadIndex = 0;
+  };
+
   VkUploadContext() = default;
   ~VkUploadContext() noexcept { shutdown(); }
 
@@ -30,98 +74,85 @@ public:
   VkUploadContext(VkUploadContext &&other) noexcept {
     *this = std::move(other);
   }
-  VkUploadContext &operator=(VkUploadContext &&other) noexcept {
-    if (this == &other) {
-      return *this;
-    }
-
-    shutdown();
-
-    m_ctx = std::exchange(other.m_ctx, nullptr);
-    m_profiler = std::exchange(other.m_profiler, nullptr);
-
-    m_framesInFlight = std::exchange(other.m_framesInFlight, 0);
-    m_frameIndex = std::exchange(other.m_frameIndex, 0);
-    m_perFrameBytes = std::exchange(other.m_perFrameBytes, 0);
-
-    m_bufCopyAlign = std::exchange(other.m_bufCopyAlign, 1);
-    m_rowPitchAlign = std::exchange(other.m_rowPitchAlign, 1);
-
-    m_staging = std::move(other.m_staging);
-    m_stagingMapped = std::exchange(other.m_stagingMapped, nullptr);
-
-    m_pools = std::exchange(other.m_pools, nullptr);
-    m_cmds = std::exchange(other.m_cmds, nullptr);
-    m_pool = std::exchange(other.m_pool, VK_NULL_HANDLE);
-    m_cmd = std::exchange(other.m_cmd, VK_NULL_HANDLE);
-
-    m_fences = std::exchange(other.m_fences, nullptr);
-
-    m_sliceBase = std::exchange(other.m_sliceBase, 0);
-    m_sliceHead = std::exchange(other.m_sliceHead, 0);
-    m_recording = std::exchange(other.m_recording, false);
-
-    return *this;
-  }
+  VkUploadContext &operator=(VkUploadContext &&other) noexcept;
 
   // perFrameBytes: bytes reserved for each frame slice
-  bool init(VkBackendCtx &ctx, uint32_t framesInflight,
-            VkDeviceSize perFrameBytes, UploadProfiler *profiler);
+  bool initFrameRing(VkBackendCtx &ctx, uint32_t framesInFlight,
+                     VkDeviceSize bytesPerFrameSlice, uint32_t threadCount,
+                     UploadProfiler *profiler);
+
+  bool initOneShot(VkBackendCtx &ctx, VkDeviceSize totalBytes,
+                   uint32_t threadCount, UploadProfiler *profiler);
+
   void shutdown() noexcept;
+
+  [[nodiscard]] Mode mode() const noexcept { return m_mode; }
+  [[nodiscard]] uint32_t framesInFlight() const noexcept {
+    return m_framesInFlight;
+  }
+  [[nodiscard]] uint32_t threadCount() const noexcept { return m_threadCount; }
+
+  [[nodiscard]] VkBuffer stagingBuffer() const noexcept {
+    return m_staging.handle();
+  }
+  [[nodiscard]] VkDeviceSize bytesPerSlice() const noexcept {
+    return m_bytesPerSlice;
+  }
 
   // This waits for the fence associated with this frame slice,
   // resets the cmd pool, and beings recording.
   bool beginFrame(uint32_t frameIndex);
+  bool beginBatch();
 
-  // Allocate space in the staging slice for the current frame.
-  VkStagingAlloc allocStaging(VkDeviceSize size, VkDeviceSize alignment = 16);
-
-  // Record a copy from staging -> buffer.
-  void cmdCopyToBuffer(VkBuffer dst, VkDeviceSize dstOffset,
-                       VkDeviceSize srcOffset, VkDeviceSize size);
-
-  // Record a buffer -> image upload for RGBA8 with layout transition:
-  // UNDEFINED -> TRANSFER_DST_OPTIMAL -> finalLayout
-  void cmdUploadRGBA8ToImage(VkImage image, uint32_t width, uint32_t height,
-                             VkDeviceSize srcOffset, VkImageLayout finalLayout);
-
-  void cmdBarrierBufferTransferToShader(VkBuffer buffer, VkDeviceSize offset,
-                                        VkDeviceSize size,
-                                        VkPipelineStageFlags dstStage);
+  // Get a recorder for this frame/batch and thread index
+  // Note: for OneShot mode, frameIndex is ignored (use 0)
+  [[nodiscard]] Recorder recorder(uint32_t frameIndex, uint32_t threadIndex);
 
   // If wait=true, wait for completion.
-  bool flush(bool wait);
-
-  [[nodiscard]] VkCommandBuffer cmd() const noexcept {
-    return (m_cmds != nullptr && m_frameIndex < m_framesInFlight)
-               ? m_cmds[m_frameIndex]
-               : VK_NULL_HANDLE;
-  }
-  [[nodiscard]] VkBuffer stagingBuffer() const noexcept {
-    return m_staging.handle();
-  }
-  [[nodiscard]] VkDeviceSize perFrameBytes() const noexcept {
-    return m_perFrameBytes;
-  }
-  [[nodiscard]] uint32_t framesInflight() const noexcept {
-    return m_framesInFlight;
-  }
+  bool flushFrame(uint32_t frameIndex, bool wait);
+  bool flushBatch(bool wait);
 
 private:
+  bool initCommon(VkBackendCtx &ctx, Mode mode, uint32_t framesInflight,
+                  VkDeviceSize bytesPerFrameSlice, uint32_t threadCount,
+                  UploadProfiler *profiler);
+
   static VkDeviceSize alignUp(VkDeviceSize v, VkDeviceSize a) noexcept;
 
-  void transitionImage(VkImage image, VkImageLayout oldLayout,
-                       VkImageLayout newLayout);
+  bool waitAndReset(uint32_t frameIndex);
+  bool submit(uint32_t frameIndex, bool wait);
 
-  bool beginCmd();
-  bool endCmd();
+  bool beginCmd(uint32_t frameIndex, uint32_t threadIndex);
+  bool endCmd(uint32_t frameIndex, uint32_t threadIndex);
+
+  VkStagingAlloc allocStaging(uint32_t frameIndex, VkDeviceSize size,
+                              VkDeviceSize alignment);
+
+  void transitionImage(VkCommandBuffer cmd, VkImage image,
+                       VkImageLayout oldLayout, VkImageLayout newLayout,
+                       VkPipelineStageFlags finalStage);
+
+  [[nodiscard]] uint32_t idx(uint32_t frameIndex,
+                             uint32_t threadIndex) const noexcept {
+    return (frameIndex * m_threadCount) + threadIndex;
+  }
+  [[nodiscard]] VkDeviceSize sliceBase(uint32_t frameIndex) const noexcept {
+    return VkDeviceSize(frameIndex) * m_bytesPerSlice;
+  }
+
+  [[nodiscard]] VkCommandPool poolAt(uint32_t frameIndex,
+                                     uint32_t threadIndex) const noexcept;
+  [[nodiscard]] VkCommandBuffer cmdAt(uint32_t frameIndex,
+                                      uint32_t threadIndex) const noexcept;
 
   VkBackendCtx *m_ctx = nullptr;        // non-owning
   UploadProfiler *m_profiler = nullptr; // non-owning
 
+  Mode m_mode = Mode::FrameRing;
+
   uint32_t m_framesInFlight = 0;
-  uint32_t m_frameIndex = 0;
-  VkDeviceSize m_perFrameBytes = 0;
+  uint32_t m_threadCount = 0;
+  VkDeviceSize m_bytesPerSlice = 0;
 
   VkDeviceSize m_bufCopyAlign = 1;
   VkDeviceSize m_rowPitchAlign = 1;
@@ -129,16 +160,15 @@ private:
   VkBufferObj m_staging;
   void *m_stagingMapped = nullptr;
 
-  // TODO: make command pool and buffer per thread instead of per frame
-  VkCommandPool *m_pools = VK_NULL_HANDLE;
-  VkCommandBuffer *m_cmds = VK_NULL_HANDLE;
-  VkCommandPool m_pool = VK_NULL_HANDLE;
-  VkCommandBuffer m_cmd = VK_NULL_HANDLE;
-
+  VkCommandPool *m_pools = nullptr;
+  VkCommandBuffer *m_cmds = nullptr;
   VkFence *m_fences = nullptr;
 
-  VkDeviceSize m_sliceBase = 0;
-  VkDeviceSize m_sliceHead = 0;
-  bool m_recording = false;
-  bool m_hadWork = false;
+  // Per-frame atomic head into slice (offset within slice)
+  std::atomic<VkDeviceSize> *m_heads = nullptr;
+
+  uint8_t *m_begun = nullptr;
+  uint8_t *m_hadWork = nullptr;
+
+  std::vector<VkCommandBuffer> m_submitScratch;
 };

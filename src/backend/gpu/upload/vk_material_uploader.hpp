@@ -6,23 +6,22 @@
 
 #include <vulkan/vulkan_core.h>
 
+class UploadProfiler;
+
 class VkMaterialUploader {
 public:
-  bool init(VkUploadContext *upload, UploadProfiler *profiler) {
-    m_upload = upload;
+  bool init(UploadProfiler *profiler) {
     m_profiler = profiler;
-    return m_upload != nullptr;
+    return true;
   }
 
-  void shutdown() noexcept {
-    m_upload = nullptr;
-    m_profiler = nullptr;
-  }
+  void shutdown() noexcept { m_profiler = nullptr; }
 
-  bool uploadOne(VkBuffer materialBuffer, VkDeviceSize dstOffsetBytes,
-                 const MaterialGPU &material);
+  bool uploadOne(
+      VkUploadContext::Recorder recorder, VkBuffer materialBuffer,
+      VkDeviceSize dstOffsetBytes, const MaterialGPU &material,
+      VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
 private:
-  VkUploadContext *m_upload = nullptr;  // non-owning
   UploadProfiler *m_profiler = nullptr; // non-owning
 };

@@ -36,11 +36,10 @@ public:
   void bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
             uint32_t frameIndex) const;
 
-  InstanceUploadResult uploadInstances(uint32_t frameIndex,
+  InstanceUploadResult uploadInstances(VkUploadContext::Recorder recorder,
+                                       uint32_t frameIndex,
                                        uint32_t &cursorInstances,
                                        std::span<const glm::mat4> models);
-
-  bool rebindUpload(VkUploadContext &upload, UploadProfiler *profiler);
 
   [[nodiscard]] VkBuffer materialBuffer() const noexcept {
     return m_materialBuf.handle();

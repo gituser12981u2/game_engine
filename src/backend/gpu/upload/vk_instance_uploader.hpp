@@ -8,6 +8,8 @@
 #include <span>
 #include <vulkan/vulkan_core.h>
 
+class UploadProfiler;
+
 struct InstanceUploadResult {
   uint32_t baseInstance = 0;
   uint32_t instanceCount = 0;
@@ -16,17 +18,16 @@ struct InstanceUploadResult {
 
 class VkInstanceUploader {
 public:
-  bool init(VkUploadContext *upload, UploadProfiler *profiler) {
-    m_upload = upload;
+  bool init(UploadProfiler *profiler) {
     m_profiler = profiler;
-    return m_upload != nullptr;
+    return true;
   }
-  void shutdown() noexcept {
-    m_upload = nullptr;
-    m_profiler = nullptr;
-  }
+  void shutdown() noexcept { m_profiler = nullptr; }
 
-  InstanceUploadResult uploadMat4Instances(VkBuffer instanceBuffer,
+  // TODO: make cursorInstances multi threaded for parallelized
+  // batching/instance writes
+  InstanceUploadResult uploadMat4Instances(VkUploadContext::Recorder recorder,
+                                           VkBuffer instanceBuffer,
                                            VkDeviceSize frameBaseBytes,
                                            VkDeviceSize frameStrideBytes,
                                            uint32_t maxInstancesPerFrame,
@@ -34,6 +35,5 @@ public:
                                            std::span<const glm::mat4> models);
 
 private:
-  VkUploadContext *m_upload = nullptr;  // non-owning
   UploadProfiler *m_profiler = nullptr; // non-owning
 };

@@ -32,6 +32,7 @@ target_link_libraries(quark_render
         quark::backend::gpu::upload
 
         quark::engine::camera
+        quark::engine::jobs
     PRIVATE
         quark::engine::geometry
 )

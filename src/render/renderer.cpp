@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
 #include "backend/profiling/cpu_profiler.hpp"
@@ -8,6 +9,7 @@
 #include "backend/profiling/vk_gpu_profiler.hpp"
 
 #include "engine/geometry/transform.hpp"
+#include "engine/jobs/job_system.hpp"
 #include "engine/mesh/mesh_data.hpp"
 
 #include "render/rendergraph/swapchain_targets.hpp"
@@ -39,17 +41,17 @@ DEFINE_TU_LOGGER("Render.Renderer");
 static constexpr VkDeviceSize kMiB = 1024ULL * 1024ULL;
 
 // 8 MiB
-static constexpr VkDeviceSize kUploadStaticBudgetPerFrame = 8ULL * kMiB;
+static constexpr VkDeviceSize kUploadStaticBudget = 8ULL * kMiB;
 
 // 2 MiB
-static constexpr VkDeviceSize kUploadFrameBudgetPerFrame = 2ULL * kMiB;
+static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;
 
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                     uint32_t framesInFlight, const std::string &vertSpvPath,
-                    const std::string &fragSpvPath) {
+                    const std::string &fragSpvPath, JobSystem &jobs) {
   if (ctx.device() == VK_NULL_HANDLE ||
       ctx.physicalDevice() == VK_NULL_HANDLE ||
       ctx.graphicsQueue() == VK_NULL_HANDLE ||
@@ -66,15 +68,17 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   shutdown();
 
   m_ctx = &ctx;
+  m_jobs = &jobs;
   m_framesInFlight = framesInFlight;
   m_vertPath = vertSpvPath;
   m_fragPath = fragSpvPath;
 
-  LOGI("Renderer initialized: framesInFlight={} | shaders: vert='{}' frag='{}' "
+  LOGI("Renderer initialized: framesInFlight={} | threadCount: {} | shaders: "
+       "vert='{}' frag='{}' "
        "| "
        "uploadMiB: static={} frame={} | caps: instances={} materials={}",
-       framesInFlight, vertSpvPath, fragSpvPath,
-       kUploadStaticBudgetPerFrame / kMiB, kUploadFrameBudgetPerFrame / kMiB,
+       framesInFlight, m_jobs->threadCount(), vertSpvPath, fragSpvPath,
+       kUploadStaticBudget / kMiB, kUploadFrameBudget / kMiB,
        kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials);
 
   VkDevice device = m_ctx->device();
@@ -115,14 +119,16 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
   LOGI("Main render pass initialized");
 
-  if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudgetPerFrame,
-                      kUploadFrameBudgetPerFrame, &m_uploadProfiler)) {
+  // TODO: use job system workers instead of hard setting to 1 thread
+  if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudget,
+                      kUploadFrameBudget, m_jobs->threadCount(),
+                      &m_uploadProfiler)) {
     LOGE("Failed to initialize upload manager");
     shutdown();
     return false;
   }
 
-  if (!m_uploads.beginFrame(0)) {
+  if (!m_uploads.beginStatic()) {
     LOGE("Failed to begin upload frame");
     shutdown();
     return false;
@@ -136,14 +142,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  if (!m_scene.rebindUpload(m_uploads.frame(), &m_uploadProfiler)) {
-    LOGE("Failed to bind scene uploader");
-    shutdown();
-    return false;
-  }
-
-  if (!m_resources.init(*m_ctx, m_uploads.statik(), m_interface, m_scene,
-                        &m_uploadProfiler)) {
+  if (!m_resources.init(*m_ctx, m_interface, m_scene, &m_uploadProfiler)) {
     LOGE("Failed to initialize resources store");
     shutdown();
     return false;
@@ -153,7 +152,9 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                                             m_scene.materialCapacity());
 
   // Create a 1x1 default white texture and material
-  if (!m_resources.materials().createDefaultMaterial()) {
+  // TOOD: use job system worker instead of hardcoding 1
+  if (!m_resources.materials().createDefaultMaterial(
+          m_uploads.staticRecorder(0))) {
     LOGE("Failed to create the default material");
     shutdown();
     return false;
@@ -351,6 +352,13 @@ void Renderer::drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
 
   uint32_t cursor = 0; // mat4 units within frame slice
 
+  // TODO: parallelize batching with each job having its own workerIndex
+  VkUploadContext::Recorder rec = m_uploads.frameRecorder(/*threadIndex=*/0);
+  if (!rec) {
+    LOGW("Frame recorder invalid (frameIndex={})", frameIndex);
+    return;
+  }
+
   for (const auto &[key, models] : batches) {
     const MeshGpu *mesh = m_resources.meshes().get(key.mesh);
     if (mesh == nullptr) {
@@ -359,7 +367,7 @@ void Renderer::drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
 
     std::span<const glm::mat4> modelsSpan(models.data(), models.size());
     auto instanceUpload =
-        m_scene.uploadInstances(frameIndex, cursor, modelsSpan);
+        m_scene.uploadInstances(rec, frameIndex, cursor, modelsSpan);
 
     if (!instanceUpload) {
       continue;
@@ -469,8 +477,8 @@ bool Renderer::drawFrame(VkPresenter &presenter,
     recordFrame(cmd, presenter, m_targets, imageIndex, items);
   }
 
-  if (!m_uploads.flushAll(false)) {
-    LOGW("Failed to flush");
+  if (!m_uploads.flushFrame(false)) {
+    LOGW("Failed to flush frame uploads");
   }
 
   FrameStatus sub = m_frames.submit(
@@ -536,12 +544,12 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
 MeshHandle Renderer::createMesh(const engine::Vertex *vertices,
                                 uint32_t vertexCount, const uint32_t *indices,
                                 uint32_t indexCount) {
-  return m_resources.meshes().createMesh(vertices, vertexCount, indices,
-                                         indexCount);
+  return m_resources.meshes().createMesh(m_uploads.staticRecorder(0), vertices,
+                                         vertexCount, indices, indexCount);
 }
 
 MeshHandle Renderer::createMesh(const engine::MeshData &mesh) {
-  return m_resources.meshes().createMesh(mesh);
+  return m_resources.meshes().createMesh(m_uploads.staticRecorder(0), mesh);
 }
 
 const MeshGpu *Renderer::get(MeshHandle handle) const {
@@ -550,20 +558,26 @@ const MeshGpu *Renderer::get(MeshHandle handle) const {
 
 TextureHandle Renderer::createTextureFromFile(const std::string &path,
                                               bool flipY) {
-  return m_resources.materials().createTextureFromFile(path, flipY);
+  return m_resources.materials().createTextureFromFile(
+      m_uploads.staticRecorder(0), path, flipY);
 }
 
 uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
-  return m_resources.materials().createMaterialFromTexture(handle);
+  // TODO: make logic for if static or frame recorder
+  return m_resources.materials().createMaterialFromTexture(
+      m_uploads.staticRecorder(0), handle);
 }
 
 uint32_t Renderer::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
-  return m_resources.materials().createMaterialFromBaseColorFactor(factor);
+  // TODO: make logic for if static or frame recorder
+  return m_resources.materials().createMaterialFromBaseColorFactor(
+      m_uploads.staticRecorder(0), factor);
 }
 
 bool Renderer::createTextureFromImage(const engine::ImageData &img,
                                       VkTexture2D &outTex) {
-  return m_resources.materials().createTextureFromImage(img, outTex);
+  return m_resources.materials().createTextureFromImage(
+      m_uploads.staticRecorder(0), img, outTex);
 }
 
 void Renderer::setActiveMaterial(uint32_t materialIndex) {
@@ -571,11 +585,17 @@ void Renderer::setActiveMaterial(uint32_t materialIndex) {
 }
 
 bool Renderer::updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu) {
-  return m_resources.materials().updateMaterialGPU(materialId, gpu);
+  // TODO: make logic for if static or frame recorder
+  return m_resources.materials().updateMaterialGPU(m_uploads.staticRecorder(0),
+                                                   materialId, gpu);
 }
 
 bool Renderer::beginUpload(uint32_t frameIndex) {
   return m_uploads.beginFrame(frameIndex);
 }
+bool Renderer::endUpload(bool wait) { return m_uploads.flushFrame(wait); }
 
-bool Renderer::endUpload(bool wait) { return m_uploads.flushStatic(wait); }
+bool Renderer::beginStaticUploads() { return m_uploads.beginStatic(); }
+bool Renderer::endStaticUploads(bool wait) {
+  return m_uploads.flushStatic(wait);
+}

@@ -1,5 +1,6 @@
 #include "app.hpp"
 
+#include "engine/jobs/job_system.hpp"
 #include "engine/logging/log.hpp"
 
 #include <GLFW/glfw3.h>
@@ -17,7 +18,10 @@ bool EngineApp::init(const AppConfig &cfg) {
     return false;
   }
 
-  LOG_INFO("App initialized");
+  if (!m_jobs.init()) {
+    std::cerr << "[App] Failed to initialize the job system\n";
+    return false;
+  }
 
   const auto platformExtensions = m_window.requiredVulkanExtensions();
   if (platformExtensions.empty()) {
@@ -42,13 +46,15 @@ bool EngineApp::init(const AppConfig &cfg) {
   }
 
   if (!m_renderer.init(m_ctx, m_presenter, cfg.framesInFlight, cfg.vertSpvPath,
-                       cfg.fragSpvPath)) {
+                       cfg.fragSpvPath, m_jobs)) {
     std::cerr << "[App] Renderer init failed\n";
     shutdown();
     return false;
   }
 
   m_inited = true;
+  LOG_INFO("App initialized");
+
   return true;
 }
 
@@ -60,6 +66,7 @@ void EngineApp::shutdown() noexcept {
   m_renderer.shutdown();
   m_presenter.shutdown();
   m_ctx.shutdown();
+  m_jobs.shutdown();
   m_window.shutdown();
 
   m_inited = false;

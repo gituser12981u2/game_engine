@@ -62,6 +62,8 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     return false;
   }
 
+  (void)m_instanceUploader.init(m_profiler);
+
   m_initiailized = true;
   return true;
 }
@@ -216,18 +218,14 @@ void SceneData::bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
   m_sets.bind(cmd, interface.pipelineLayout(), 0, frameIndex);
 }
 
-bool SceneData::rebindUpload(VkUploadContext &upload,
-                             UploadProfiler *profiler) {
-  return m_instanceUploader.init(&upload, profiler);
-}
-
 InstanceUploadResult
-SceneData::uploadInstances(uint32_t frameIndex, uint32_t &cursorInstances,
+SceneData::uploadInstances(VkUploadContext::Recorder recorder,
+                           uint32_t frameIndex, uint32_t &cursorInstances,
                            std::span<const glm::mat4> models) {
   const VkDeviceSize frameBase =
       VkDeviceSize(frameIndex) * m_instanceFrameStride;
 
   return m_instanceUploader.uploadMat4Instances(
-      m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
+      recorder, m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
       m_maxInstancesPerFrame, cursorInstances, models);
 }

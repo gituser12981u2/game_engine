@@ -7,11 +7,12 @@
 #include <vulkan/vulkan_core.h>
 
 InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
-    VkBuffer instanceBuffer, VkDeviceSize frameBaseBytes,
-    VkDeviceSize frameStrideBytes, uint32_t maxInstancesPerFrame,
-    uint32_t &cursorInstances, std::span<const glm::mat4> models) {
+    VkUploadContext::Recorder recorder, VkBuffer instanceBuffer,
+    VkDeviceSize frameBaseBytes, VkDeviceSize frameStrideBytes,
+    uint32_t maxInstancesPerFrame, uint32_t &cursorInstances,
+    std::span<const glm::mat4> models) {
   InstanceUploadResult out{};
-  if (m_upload == nullptr || instanceBuffer == VK_NULL_HANDLE) {
+  if (!recorder || instanceBuffer == VK_NULL_HANDLE) {
     return out;
   }
 
@@ -35,7 +36,7 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
     return out;
   }
 
-  VkStagingAlloc stageAlloc = m_upload->allocStaging(bytes, /*alignment*/ 16);
+  VkStagingAlloc stageAlloc = recorder.allocStaging(bytes, /*alignment*/ 16);
   if (!stageAlloc) {
     std::cerr << "[InstanceUploader] allocStaging failed for instances\n";
     return out;
@@ -52,9 +53,8 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
   const VkDeviceSize dstOffset =
       frameBaseBytes + (VkDeviceSize(base) * sizeof(glm::mat4));
 
-  m_upload->cmdCopyToBuffer(instanceBuffer, dstOffset, stageAlloc.offset,
-                            bytes);
-  m_upload->cmdBarrierBufferTransferToShader(
+  recorder.cmdCopyToBuffer(instanceBuffer, dstOffset, stageAlloc.offset, bytes);
+  recorder.cmdBarrierBufferTransferToShader(
       instanceBuffer, dstOffset, bytes, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 
   cursorInstances += count;

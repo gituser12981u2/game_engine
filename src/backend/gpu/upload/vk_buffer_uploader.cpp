@@ -9,15 +9,8 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
-bool VkBufferUploader::init(VmaAllocator allocator, VkUploadContext *upload,
-                            UploadProfiler *profiler) {
-  if (allocator == nullptr || upload == nullptr) {
-    std::cerr << "[Uploader] Invalid init args\n";
-    return false;
-  }
-
+bool VkBufferUploader::init(VmaAllocator allocator, UploadProfiler *profiler) {
   m_allocator = allocator;
-  m_upload = upload;
   m_profiler = profiler;
 
   return true;
@@ -25,16 +18,14 @@ bool VkBufferUploader::init(VmaAllocator allocator, VkUploadContext *upload,
 
 void VkBufferUploader::shutdown() noexcept {
   m_allocator = nullptr;
-  m_upload = nullptr;
   m_profiler = nullptr;
 }
 
-bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
-                                                 VkDeviceSize size,
-                                                 VkBufferUsageFlags finalUsage,
-                                                 VkBufferObj &outBuffer) {
-  if (m_allocator == nullptr || m_upload == nullptr) {
-    std::cerr << "[Uploader] Not initialized\n";
+bool VkBufferUploader::uploadToDeviceLocalBuffer(
+    VkUploadContext::Recorder recorder, const void *data, VkDeviceSize size,
+    VkBufferUsageFlags finalUsage, VkBufferObj &outBuffer) {
+  if (!recorder) {
+    std::cerr << "[BufferUploader] Invalid recorder\n";
     return false;
   }
 
@@ -43,7 +34,7 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
     return false;
   }
 
-  VkStagingAlloc stageAlloc = m_upload->allocStaging(size);
+  VkStagingAlloc stageAlloc = recorder.allocStaging(size);
   if (!stageAlloc) {
     std::cerr << "[Uploader] Out of staging space (increase per-frame budget "
                  "or flush earlier)\n";
@@ -70,8 +61,8 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(const void *data,
     profilerAdd(m_profiler, UploadProfiler::Stat::BufferAllocatedBytes, size);
   }
 
-  m_upload->cmdCopyToBuffer(outBuffer.handle(), /*dstOffset=*/0,
-                            /*srcOffset=*/stageAlloc.offset, size);
+  recorder.cmdCopyToBuffer(outBuffer.handle(), /*dstOffset=*/0,
+                           /*srcOffset=*/stageAlloc.offset, size);
 
   if (m_profiler != nullptr) {
     profilerAdd(m_profiler, UploadProfiler::Stat::BufferUploadCount, 1);

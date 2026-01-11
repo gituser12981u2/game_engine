@@ -18,19 +18,16 @@ struct MeshHandle {
 
 class MeshStore {
 public:
-  bool init(VkBackendCtx &ctx, VkUploadContext &upload,
-            UploadProfiler *profiler);
+  bool init(VkBackendCtx &ctx, UploadProfiler *profiler);
   void shutdown() noexcept;
 
-  MeshHandle createMesh(const engine::Vertex *vertices, uint32_t vertexCount,
+  MeshHandle createMesh(VkUploadContext::Recorder staticRecorder,
+                        const engine::Vertex *vertices, uint32_t vertexCount,
                         const uint32_t *indices, uint32_t indexCount);
-  MeshHandle createMesh(const engine::MeshData &mesh);
+  MeshHandle createMesh(VkUploadContext::Recorder staticRecorder,
+                        const engine::MeshData &mesh);
 
   [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
-
-  bool rebind(VkBackendCtx &ctx, VkUploadContext &upload) {
-    return m_uploader.init(ctx.allocator(), &upload, m_uploaderProfiler);
-  }
 
 private:
   std::vector<MeshGpu> m_meshes;

@@ -15,6 +15,7 @@ target_link_libraries(quark_engine_app
       quark::render
       quark::engine::geometry
       quark::platform::window
+      quark::engine::jobs
     PRIVATE
       Vulkan::Vulkan
 )

@@ -37,29 +37,38 @@ public:
   }
 
   bool init(VkBackendCtx &ctx, uint32_t framesInFlight,
-            VkDeviceSize staticBudgetPerFrame, VkDeviceSize frameBudgetPerFrame,
-            UploadProfiler *profiler);
+            VkDeviceSize staticTotalBytes, VkDeviceSize frameBudget,
+            uint32_t threadCount, UploadProfiler *profiler);
   void shutdown() noexcept;
 
-  // TODO: make static not per frame after uploader is
-  // redone to allow for per thread command pools
   bool beginFrame(uint32_t frameIndex);
-
   bool flushFrame(bool wait);
+  [[nodiscard]] VkUploadContext::Recorder frameRecorder(uint32_t threadIndex);
+
+  bool beginStatic();
   bool flushStatic(bool wait);
+  [[nodiscard]] VkUploadContext::Recorder staticRecorder(uint32_t threadIndex);
 
   bool flushAll(bool wait);
 
-  [[nodiscard]] VkUploadContext &statik() noexcept { return m_static; }
-  [[nodiscard]] VkUploadContext &frame() noexcept { return m_frame; }
-
+  [[nodiscard]] uint32_t currentFrameIndex() const noexcept {
+    return m_currentFrameIndex;
+  }
   [[nodiscard]] uint32_t framesInFlight() const noexcept {
     return m_framesInFlight;
   }
+  [[nodiscard]] uint32_t threadCount() const noexcept { return m_threadCount; }
 
 private:
   VkBackendCtx *m_ctx = nullptr; // non-owning
+  //
   uint32_t m_framesInFlight = 0;
+  uint32_t m_threadCount = 0;
+
+  uint32_t m_currentFrameIndex = 0;
+  bool m_frameBegun = false;
+
+  bool m_staticActive = false;
 
   VkUploadContext m_static;
   VkUploadContext m_frame;

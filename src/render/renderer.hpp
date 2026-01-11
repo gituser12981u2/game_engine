@@ -35,6 +35,7 @@
 
 class VkPresenter;
 class VkBackendCtx;
+class JobSystem;
 
 struct DrawItem {
   MeshHandle mesh{};
@@ -107,16 +108,17 @@ public:
     m_cameraUbo = other.m_cameraUbo;
 
     // Rebind uploader's inside stores to this renderer's command context
-    if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
-      (void)m_resources.rebind(*m_ctx, m_uploads.statik());
-      (void)m_resources.rebind(*m_ctx, m_uploads.frame());
-    }
+    // if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
+    //   (void)m_resources.rebind(*m_ctx, m_uploads.statik());
+    //   (void)m_resources.rebind(*m_ctx, m_uploads.frame());
+    // }
 
     return *this;
   }
 
   bool init(VkBackendCtx &ctx, VkPresenter &presenter, uint32_t framesInFlight,
-            const std::string &vertSpvPath, const std::string &fragSpvPath);
+            const std::string &vertSpvPath, const std::string &fragSpvPath,
+            JobSystem &jobs);
   void shutdown() noexcept;
 
   [[nodiscard]] bool drawFrame(VkPresenter &presenter, MeshHandle mesh);
@@ -148,6 +150,9 @@ public:
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);
 
+  bool beginStaticUploads();
+  bool endStaticUploads(bool wait);
+
   // TODO: make PImpl
 private:
   bool createDefaultMaterial() noexcept;
@@ -177,6 +182,7 @@ private:
 
   uint32_t m_framesInFlight = 0;
   VkBackendCtx *m_ctx = nullptr; // non-owning
+  JobSystem *m_jobs = nullptr;   // non-owning
 
   SwapchainTargets m_targets;
   VkShaderInterface m_interface;

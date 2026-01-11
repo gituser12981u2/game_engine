@@ -9,16 +9,18 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkMaterialUploader::uploadOne(VkBuffer materialBuffer,
+bool VkMaterialUploader::uploadOne(VkUploadContext::Recorder recorder,
+                                   VkBuffer materialBuffer,
                                    VkDeviceSize dstOffsetBytes,
-                                   const MaterialGPU &material) {
-  if (m_upload == nullptr || materialBuffer == VK_NULL_HANDLE) {
+                                   const MaterialGPU &material,
+                                   VkPipelineStageFlags dstStage) {
+  if (!recorder || materialBuffer == VK_NULL_HANDLE) {
     return false;
   }
 
   constexpr VkDeviceSize bytes = sizeof(MaterialGPU);
 
-  VkStagingAlloc stage = m_upload->allocStaging(bytes, /*alignment=*/16);
+  VkStagingAlloc stage = recorder.allocStaging(bytes, /*alignment=*/16);
   if (!stage) {
     std::cerr << "[MaterialUploader] allocStaging failed\n";
     return false;
@@ -31,11 +33,9 @@ bool VkMaterialUploader::uploadOne(VkBuffer materialBuffer,
     profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, bytes);
   }
 
-  m_upload->cmdCopyToBuffer(materialBuffer, dstOffsetBytes, stage.offset,
-                            bytes);
-  m_upload->cmdBarrierBufferTransferToShader(
-      materialBuffer, dstOffsetBytes, bytes,
-      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+  recorder.cmdCopyToBuffer(materialBuffer, dstOffsetBytes, stage.offset, bytes);
+  recorder.cmdBarrierBufferTransferToShader(materialBuffer, dstOffsetBytes,
+                                            bytes, dstStage);
 
   if (m_profiler != nullptr) {
     profilerAdd(m_profiler, UploadProfiler::Stat::MaterialUploadCount, 1);

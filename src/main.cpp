@@ -22,12 +22,12 @@
 // TODO: fix bad API
 class UploadScope {
 public:
-  UploadScope(Renderer &r, uint32_t frameIndex) : m_r(&r), m_ok(false) {
-    m_ok = m_r->beginUpload(frameIndex);
+  UploadScope(Renderer &r) : m_r(&r), m_ok(false) {
+    m_ok = m_r->beginStaticUploads();
   }
   ~UploadScope() {
     if (m_ok) {
-      (void)m_r->endUpload(/*wait=*/false);
+      (void)m_r->endStaticUploads(/*wait=*/false);
     }
   }
   explicit operator bool() const noexcept { return m_ok; }
@@ -91,7 +91,7 @@ int main() {
   uint32_t material = UINT32_MAX;
 
   {
-    UploadScope up(app.renderer(), 0);
+    UploadScope up(app.renderer());
     if (!up) {
       std::cerr << "Failed to begin upload\n";
     }
