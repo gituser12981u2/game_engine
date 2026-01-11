@@ -28,6 +28,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -40,6 +41,32 @@ struct DrawItem {
   uint32_t material = UINT32_MAX;
   glm::mat4 model = glm::mat4(1.0F);
 };
+
+struct BatchKey {
+  MeshHandle mesh;
+  uint32_t material;
+
+  bool operator==(const BatchKey &other) const noexcept {
+    return mesh.id == other.mesh.id && material == other.material;
+  }
+};
+
+struct BatchKeyHash {
+  size_t operator()(const BatchKey &key) const noexcept {
+    size_t h1 = std::hash<uint32_t>{}(key.mesh.id);
+    size_t h2 = std::hash<uint32_t>{}(key.material);
+    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+  }
+};
+
+struct Batch {
+  BatchKey key{};
+  // TODO: make vector or arena span
+  std::span<const glm::mat4> models;
+};
+
+using BatchMap =
+    std::unordered_map<BatchKey, std::vector<glm::mat4>, BatchKeyHash>;
 
 class Renderer {
 public:
@@ -133,6 +160,13 @@ private:
   void recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
                    const SwapchainTargets &targets, uint32_t imageIndex,
                    std::span<const DrawItem> items);
+
+  [[nodiscard]] std::unordered_map<BatchKey, std::vector<glm::mat4>,
+                                   BatchKeyHash>
+  buildBatches(std::span<const DrawItem> items) const;
+
+  void drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
+                   const BatchMap &batches);
 
   std::vector<VkImageLayout> m_swapLayouts;
 

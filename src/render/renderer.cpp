@@ -24,7 +24,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
@@ -47,23 +46,6 @@ static constexpr VkDeviceSize kUploadFrameBudgetPerFrame = 2ULL * kMiB;
 
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
-
-struct BatchKey {
-  MeshHandle mesh;
-  uint32_t material;
-
-  bool operator==(const BatchKey &other) const noexcept {
-    return mesh.id == other.mesh.id && material == other.material;
-  }
-};
-
-struct BatchKeyHash {
-  size_t operator()(const BatchKey &key) const noexcept {
-    size_t h1 = std::hash<uint32_t>{}(key.mesh.id);
-    size_t h2 = std::hash<uint32_t>{}(key.material);
-    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-  }
-};
 
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                     uint32_t framesInFlight, const std::string &vertSpvPath,
@@ -330,7 +312,26 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
 
   // TODO: sort by mesh, material and stream directly into the uploader
   // without building vectors per batch
-  std::unordered_map<BatchKey, std::vector<glm::mat4>, BatchKeyHash> batches;
+  auto batches = buildBatches(items);
+  drawBatches(cmd, frameIndex, batches);
+
+  vkCmdEndRendering(cmd);
+  m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
+
+  util::cmdImageBarrier(
+      cmd, scImg, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+  layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+  m_gpuProfiler.markFrameEnd(cmd, frameIndex);
+  vkEndCommandBuffer(cmd);
+}
+
+BatchMap Renderer::buildBatches(std::span<const DrawItem> items) const {
+  BatchMap batches;
   batches.reserve(items.size());
 
   for (const DrawItem &item : items) {
@@ -339,22 +340,24 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
     }
 
     uint32_t mat = m_resources.materials().resolveMaterial(item.material);
-    BatchKey key{.mesh = item.mesh, .material = mat};
-    batches[key].push_back(item.model);
+    batches[BatchKey{.mesh = item.mesh, .material = mat}].push_back(item.model);
   }
+
+  return batches;
+}
+
+void Renderer::drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
+                           const BatchMap &batches) {
 
   uint32_t cursor = 0; // mat4 units within frame slice
 
-  for (auto &item : batches) {
-    const BatchKey &key = item.first;
-    std::vector<glm::mat4> &models = item.second;
-    std::span<const glm::mat4> modelsSpan(models.data(), models.size());
-
+  for (const auto &[key, models] : batches) {
     const MeshGpu *mesh = m_resources.meshes().get(key.mesh);
     if (mesh == nullptr) {
       continue;
     }
 
+    std::span<const glm::mat4> modelsSpan(models.data(), models.size());
     auto instanceUpload =
         m_scene.uploadInstances(frameIndex, cursor, modelsSpan);
 
@@ -404,20 +407,6 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
       m_cpuProfiler.addTriangles(triangles);
     }
   }
-
-  vkCmdEndRendering(cmd);
-  m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
-
-  util::cmdImageBarrier(
-      cmd, scImg, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
-      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-
-  layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-  m_gpuProfiler.markFrameEnd(cmd, frameIndex);
-  vkEndCommandBuffer(cmd);
 }
 
 bool Renderer::drawFrame(VkPresenter &presenter, MeshHandle mesh) {
