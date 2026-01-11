@@ -33,8 +33,9 @@ bool VkMaterialUploader::uploadOne(VkBuffer materialBuffer,
 
   m_upload->cmdCopyToBuffer(materialBuffer, dstOffsetBytes, stage.offset,
                             bytes);
-  m_upload->cmdBarrierBufferTransferToFragmentShader(materialBuffer,
-                                                     dstOffsetBytes, bytes);
+  m_upload->cmdBarrierBufferTransferToShader(
+      materialBuffer, dstOffsetBytes, bytes,
+      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
   if (m_profiler != nullptr) {
     profilerAdd(m_profiler, UploadProfiler::Stat::MaterialUploadCount, 1);

@@ -3,6 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/profiling/upload_profiler.hpp"
+#include "util/vk_barrier.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -303,75 +304,25 @@ void VkUploadContext::cmdCopyToBuffer(VkBuffer dst, VkDeviceSize dstOffset,
   vkCmdCopyBuffer(m_cmd, m_staging.handle(), dst, 1, &copy);
 }
 
-static VkImageMemoryBarrier makeImageBarrier(VkImage image,
-                                             VkImageLayout oldLayout,
-                                             VkImageLayout newLayout,
-                                             VkAccessFlags srcAccess,
-                                             VkAccessFlags dstAccess) {
-  VkImageMemoryBarrier imageBarrier{};
-  imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  imageBarrier.oldLayout = oldLayout;
-  imageBarrier.newLayout = newLayout;
-  imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  imageBarrier.image = image;
-  imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  imageBarrier.subresourceRange.baseMipLevel = 0;
-  imageBarrier.subresourceRange.levelCount = 1;
-  imageBarrier.subresourceRange.baseArrayLayer = 0;
-  imageBarrier.subresourceRange.layerCount = 1;
-  imageBarrier.srcAccessMask = srcAccess;
-  imageBarrier.dstAccessMask = dstAccess;
+void VkUploadContext::cmdBarrierBufferTransferToShader(
+    VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size,
+    VkPipelineStageFlags dstStage) {
 
-  return imageBarrier;
-}
-
-// TODO: generalize to include frag and vertex to cut down on copy
-// code
-void VkUploadContext::cmdBarrierBufferTransferToVertexShader(
-    VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
   if (!m_recording) {
     return;
   }
 
-  VkBufferMemoryBarrier bufBarrier{};
-  bufBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  bufBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  bufBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  bufBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  bufBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  bufBarrier.buffer = buffer;
-  bufBarrier.offset = offset;
-  bufBarrier.size = size;
-
-  vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 1,
-                       &bufBarrier, 0, nullptr);
-}
-
-void VkUploadContext::cmdBarrierBufferTransferToFragmentShader(
-    VkBuffer buffer, VkDeviceSize offset, VkDeviceSize size) {
-  if (!m_recording) {
-    return;
-  }
-
-  VkBufferMemoryBarrier bufBarrier{};
-  bufBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  bufBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  bufBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  bufBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  bufBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  bufBarrier.buffer = buffer;
-  bufBarrier.offset = offset;
-  bufBarrier.size = size;
-
-  vkCmdPipelineBarrier(m_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1,
-                       &bufBarrier, 0, nullptr);
+  util::cmdBufferBarrier(
+      m_cmd, buffer, offset, size, VK_ACCESS_TRANSFER_WRITE_BIT,
+      VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, dstStage);
 }
 
 void VkUploadContext::transitionImage(VkImage image, VkImageLayout oldLayout,
                                       VkImageLayout newLayout) {
+  if (!m_recording) {
+    return;
+  }
+
   VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
   VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
   VkAccessFlags srcAccess = 0;
@@ -386,7 +337,8 @@ void VkUploadContext::transitionImage(VkImage image, VkImageLayout oldLayout,
   } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
              newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
     srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dstStage =
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // or make this configurable
     srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
     dstAccess = VK_ACCESS_SHADER_READ_BIT;
   } else {
@@ -395,10 +347,9 @@ void VkUploadContext::transitionImage(VkImage image, VkImageLayout oldLayout,
     return;
   }
 
-  VkImageMemoryBarrier barrier =
-      makeImageBarrier(image, oldLayout, newLayout, srcAccess, dstAccess);
-  vkCmdPipelineBarrier(m_cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
-                       &barrier);
+  util::cmdImageBarrier(m_cmd, image, oldLayout, newLayout, srcAccess,
+                        dstAccess, srcStage, dstStage,
+                        VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 void VkUploadContext::cmdUploadRGBA8ToImage(VkImage image, uint32_t width,

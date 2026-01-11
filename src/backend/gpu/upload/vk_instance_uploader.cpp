@@ -54,8 +54,8 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
 
   m_upload->cmdCopyToBuffer(instanceBuffer, dstOffset, stageAlloc.offset,
                             bytes);
-  m_upload->cmdBarrierBufferTransferToVertexShader(instanceBuffer, dstOffset,
-                                                   bytes);
+  m_upload->cmdBarrierBufferTransferToShader(
+      instanceBuffer, dstOffset, bytes, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 
   cursorInstances += count;
 

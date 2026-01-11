@@ -208,10 +208,10 @@ bool VkDeviceCtx::pickPhysicalDevice(VkInstance instance) {
   vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
   for (VkPhysicalDevice device : devices) {
-    // if (!supportsVulkan13(device)) {
-    //   LOGW("Skipping device: Vulkan < 1.3");
-    //   continue;
-    // }
+    if (!supportsVulkan13(device)) {
+      LOGW("Skipping device: Vulkan < 1.3");
+      continue;
+    }
 
     if (!supportsDynamicRendering(device)) {
       LOGW("Skipping device: dynamicRendering not supported");

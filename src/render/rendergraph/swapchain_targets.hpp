@@ -42,6 +42,7 @@ public:
 private:
   bool rebuildDepth(VkBackendCtx &ctx, VkExtent2D extent, uint32_t imageCount);
 
+  // TODO: dynamic depth?
   std::vector<VkDepthImage> m_depthImages; // one per swapchain image
   std::vector<VkImageView> m_depthViews;   // parallel to m_depthImages
 

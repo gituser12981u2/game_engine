@@ -85,13 +85,9 @@ public:
   void cmdUploadRGBA8ToImage(VkImage image, uint32_t width, uint32_t height,
                              VkDeviceSize srcOffset, VkImageLayout finalLayout);
 
-  void cmdBarrierBufferTransferToVertexShader(VkBuffer buffer,
-                                              VkDeviceSize offset,
-                                              VkDeviceSize size);
-
-  void cmdBarrierBufferTransferToFragmentShader(VkBuffer buffer,
-                                                VkDeviceSize offset,
-                                                VkDeviceSize size);
+  void cmdBarrierBufferTransferToShader(VkBuffer buffer, VkDeviceSize offset,
+                                        VkDeviceSize size,
+                                        VkPipelineStageFlags dstStage);
 
   // If wait=true, wait for completion.
   bool flush(bool wait);

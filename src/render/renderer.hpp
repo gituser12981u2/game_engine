@@ -29,6 +29,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkPresenter;
@@ -132,6 +133,8 @@ private:
   void recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
                    const SwapchainTargets &targets, uint32_t imageIndex,
                    std::span<const DrawItem> items);
+
+  std::vector<VkImageLayout> m_swapLayouts;
 
   CpuProfiler m_cpuProfiler;
   VkGpuProfiler m_gpuProfiler;
