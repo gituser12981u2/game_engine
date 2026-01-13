@@ -9,9 +9,6 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Backend.Instance");
-#define LOG_TU_LOGGER() ThisLogger()
-
 #ifndef NDEBUG
 constexpr bool kEnableValidationLayers = true;
 #else

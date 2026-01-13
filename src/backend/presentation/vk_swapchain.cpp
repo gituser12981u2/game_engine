@@ -4,17 +4,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
+#include <fmt/format.h>
+#include <sys/stat.h>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Backend.Instance");
-#define LOG_TU_LOGGER() ThisLogger()
-
-VkSwapchain::SwapChainSupportDetails
+VkSwapchain::SwapchainSupportDetails
 VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
                                    VkSurfaceKHR surface) {
-  SwapChainSupportDetails details;
+  SwapchainSupportDetails details;
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
                                             &details.capabilities);
@@ -36,25 +34,21 @@ VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
         device, surface, &presentModeCount, details.presentModes.data());
   }
 
-  LOGD("Swapchain Capabilites: minImageCount={}, maxImageCount={}",
-       details.capabilities.minImageCount, details.capabilities.maxImageCount);
+  LOGD("Swapchain Capabilites: minImageCount={}, maxImageCount={}, "
+       "currentExtent=({}x{})",
+       details.capabilities.minImageCount, details.capabilities.maxImageCount,
+       details.capabilities.currentExtent.width,
+       details.capabilities.currentExtent.height);
 
-  std::cout << "[Swapchain] Capabilites:"
-            << " minImageCount=" << details.capabilities.minImageCount
-            << " maxImageCount=" << details.capabilities.maxImageCount
-            << " currentExtent=(" << details.capabilities.currentExtent.width
-            << "x" << details.capabilities.currentExtent.height << ")\n";
-
-  std::cout << "[Swapchain] Available formats: " << formatCount << "\n";
+  LOGT("Available swapchain formats: {}", formatCount);
   for (const auto &f : details.formats) {
-    std::cout << " format=" << f.format << " colorSpace=" << f.colorSpace
-              << "\n";
+    LOGT("  format={} colorSpace={}", fmt::underlying(f.format),
+         fmt::underlying(f.colorSpace));
   }
 
-  std::cout << "[Swapchain] Available present modes: " << presentModeCount
-            << "\n";
+  LOGT("Available swapchain present modes {}", presentModeCount);
   for (const auto &pm : details.presentModes) {
-    std::cout << " presentMode=" << pm << "\n";
+    LOGT("presentMode={}", fmt::underlying(pm));
   }
 
   return details;
@@ -62,14 +56,13 @@ VkSwapchain::querySwapChainSupport(VkPhysicalDevice device,
 
 VkSurfaceFormatKHR VkSwapchain::chooseSwapSurfaceFormat(
     const std::vector<VkSurfaceFormatKHR> &availableFormats) {
-  // If architecture allows choosing of any format
   if (availableFormats.size() == 1 &&
       availableFormats[0].format == VK_FORMAT_UNDEFINED) {
     VkSurfaceFormatKHR format{};
     format.format = VK_FORMAT_B8G8R8A8_SRGB;
     format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    std::cout << "[Swapchain] Chose perferred format (UNDEFINED -> default): "
-              << format.format << " / " << format.colorSpace << "\n";
+    LOGI("Chose prefered format: {} / {}", fmt::underlying(format.format),
+         fmt::underlying(format.colorSpace));
     return format;
   }
 
@@ -78,9 +71,9 @@ VkSurfaceFormatKHR VkSwapchain::chooseSwapSurfaceFormat(
   for (const auto &availableFormat : availableFormats) {
     if (availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
         availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB) {
-      std::cout << "[Swapchain] Chose perferred sRGB format: "
-                << availableFormat.format << " / " << availableFormat.colorSpace
-                << "\n";
+      LOGI("Chose BGRA8 + sRGB_NONLINEAR format: {} / {}",
+           fmt::underlying(availableFormat.format),
+           fmt::underlying(availableFormat.colorSpace));
       return availableFormat;
     }
   }
@@ -89,17 +82,17 @@ VkSurfaceFormatKHR VkSwapchain::chooseSwapSurfaceFormat(
   for (const auto &availableFormat : availableFormats) {
     if (availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
         availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM) {
-      std::cout << "[Swapchain] Chose UNORM + sRGB_NONLINEAR: "
-                << availableFormat.format << " / " << availableFormat.colorSpace
-                << "\n";
+      LOGI("Chose UNORM + sRGB_NONLINEAR: {} / {}",
+           fmt::underlying(availableFormat.format),
+           fmt::underlying(availableFormat.colorSpace));
       return availableFormat;
     }
   }
 
   // Fallback to first available format
-  std::cout << "[Swapchain] Using fallback format: "
-            << availableFormats[0].format << " / "
-            << availableFormats[0].colorSpace << "\n";
+  LOGI("Using fallback format: {} / {}",
+       fmt::underlying(availableFormats[0].format),
+       fmt::underlying(availableFormats[0].colorSpace));
   return availableFormats[0];
 }
 
@@ -110,15 +103,15 @@ VkPresentModeKHR VkSwapchain::chooseSwapPresentMode(
   // (https://github.com/KhronosGroup/MoltenVK/issues/581#issuecomment-488903202)
   for (const auto &presentMode : availablePresentModes) {
     if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-      std::cout << "[Swapchain] Chose present mode: MAILBOX\n";
+      LOGI("Chose present mode MAILBOX");
       return presentMode;
     }
   }
 
-  // Fallback: FIFO since it is guaranteed to be supported
+  // Fallback to FIFO since it is guaranteed to be supported
   for (const auto &presentMode : availablePresentModes) {
     if (presentMode == VK_PRESENT_MODE_FIFO_KHR) {
-      std::cout << "[Swapchain] Chose present mode: FIFO\n";
+      LOGI("Chose present mode FIFO");
       return presentMode;
     }
   }
@@ -127,7 +120,7 @@ VkPresentModeKHR VkSwapchain::chooseSwapPresentMode(
   VkPresentModeKHR fallback = availablePresentModes.empty()
                                   ? VK_PRESENT_MODE_FIFO_KHR
                                   : availablePresentModes[0];
-  std::cout << "[Swapchain] Using fallback present mode: " << fallback << "\n";
+  LOGI("Using fallback present mode {}", fmt::underlying(fallback));
   return fallback;
 }
 
@@ -135,9 +128,6 @@ VkExtent2D
 VkSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
                               uint32_t width, uint32_t height) {
   if (capabilities.currentExtent.width != UINT32_MAX) {
-    std::cout << "[Swapchain] Using currentExtent from capabilities: ("
-              << capabilities.currentExtent.width << "x"
-              << capabilities.currentExtent.height << ")\n";
     // The surface size is dictated by the window system (common on macOS)
     return capabilities.currentExtent;
   }
@@ -151,32 +141,33 @@ VkSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities,
       std::clamp(actualExtent.height, capabilities.minImageExtent.height,
                  capabilities.maxImageExtent.height);
 
-  std::cout << "[Swapchain] Using clamped extent: (" << actualExtent.width
-            << "x" << actualExtent.height << ")\n";
+  LOGI("Using clamped extent: ({}x{})", actualExtent.width,
+       actualExtent.height);
   return actualExtent;
 }
 
 bool VkSwapchain::init(VkBackendCtx &ctx, VkSurfaceKHR surface, uint32_t width,
                        uint32_t height) {
   if (surface == VK_NULL_HANDLE) {
-    std::cerr << "[Swapchain] surface is null\n";
+    LOGE("Surface is null");
     return false;
   }
 
   VkDevice device = ctx.device();
   VkPhysicalDevice physicalDevice = ctx.physicalDevice();
 
-  VkSwapchainKHR old = m_swapChain;
+  VkSwapchainKHR old = m_swapchain;
 
+  LOGD("Destroying swapchainimage views");
   destroySwapchainImageViews(device);
 
   m_surface = surface;
 
-  SwapChainSupportDetails support =
+  SwapchainSupportDetails support =
       querySwapChainSupport(physicalDevice, m_surface);
 
   if (support.formats.empty() || support.presentModes.empty()) {
-    std::cerr << "[Swapchain] support incomplete\n";
+    LOGE("Swapchain support incomplete");
     return false;
   }
 
@@ -187,17 +178,15 @@ bool VkSwapchain::init(VkBackendCtx &ctx, VkSurfaceKHR surface, uint32_t width,
   uint32_t imageCount = support.capabilities.minImageCount + 1;
   if (support.capabilities.maxImageCount > 0 &&
       imageCount > support.capabilities.maxImageCount) {
-    std::cout << "[Swapchain] Clamping imageCount from" << imageCount
-              << " to maxImageCount=" << support.capabilities.maxImageCount
-              << "\n";
+    LOGI("Clamping imageCount from {} to maxImageCount={}", imageCount,
+         support.capabilities.maxImageCount);
     imageCount = support.capabilities.maxImageCount;
   }
 
-  std::cout << "[Swapchain] Selected parameters:\n";
-  std::cout << "  imageCount = " << imageCount << "\n";
-  std::cout << "  colorSpace = " << surfaceFormat.colorSpace << "\n";
-  std::cout << "  extent     = (" << extent.width << "x" << extent.height
-            << ")\n";
+  LOGI("Selected swapchain parameters: imageCount = {} colorSpace = {} extent "
+       "= ({}x{})",
+       imageCount, fmt::underlying(surfaceFormat.colorSpace), extent.width,
+       extent.height);
 
   VkSwapchainCreateInfoKHR createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -220,82 +209,81 @@ bool VkSwapchain::init(VkBackendCtx &ctx, VkSurfaceKHR surface, uint32_t width,
   // Clipped pixels are rendered out
   createInfo.clipped = VK_TRUE;
 
-  std::cout << "[Swapchain] preTransform = "
-            << support.capabilities.currentTransform << "\n";
-  std::cout
-      << "[Swapchain] compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR\n";
-  std::cout << "[Swapchain] clipped = VK_TRUE\n";
+  LOGI("Swapchain preTransform = {}, compositeAlpha = {}, clipped = {}",
+       fmt::underlying(support.capabilities.currentTransform),
+       fmt::underlying(createInfo.compositeAlpha), createInfo.clipped);
 
   createInfo.oldSwapchain = old;
 
   VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
-  VkResult result =
+  VkResult res =
       vkCreateSwapchainKHR(device, &createInfo, nullptr, &newSwapchain);
-  if (result != VK_SUCCESS) {
-    std::cerr << "[Swapchain] vkCreateSwapchainKHR failed: " << result << "\n";
+  if (res != VK_SUCCESS) {
+    LOGE("vkCreateSwapchainKHR failed: {}", fmt::underlying(res));
     return false;
   }
 
   // Destroy old swapchain
   if (old != VK_NULL_HANDLE) {
+    LOGD("Destroying swapchain");
     vkDestroySwapchainKHR(device, old, nullptr);
   }
 
-  m_swapChain = newSwapchain;
+  m_swapchain = newSwapchain;
 
-  vkGetSwapchainImagesKHR(device, m_swapChain, &imageCount, nullptr);
-  m_swapChainImages.resize(imageCount);
-  vkGetSwapchainImagesKHR(device, m_swapChain, &imageCount,
-                          m_swapChainImages.data());
+  vkGetSwapchainImagesKHR(device, m_swapchain, &imageCount, nullptr);
+  m_swapchainImages.resize(imageCount);
+  vkGetSwapchainImagesKHR(device, m_swapchain, &imageCount,
+                          m_swapchainImages.data());
 
-  m_swapChainImageFormat = surfaceFormat.format;
-  m_swapChainExtent = extent;
+  m_swapchainImageFormat = surfaceFormat.format;
+  m_swapchainExtent = extent;
 
-  std::cout << "[Swapchain] initialized success," << m_swapChainImages.size()
-            << " images acquired\n";
   return true;
 }
 
 void VkSwapchain::shutdown(VkDevice device) noexcept {
   if (device != VK_NULL_HANDLE) {
+    LOGD("Destroying swapchain image views");
     destroySwapchainImageViews(device);
 
-    if (m_swapChain != VK_NULL_HANDLE) {
-      vkDestroySwapchainKHR(device, m_swapChain, nullptr);
+    if (m_swapchain != VK_NULL_HANDLE) {
+      LOGD("Destroying swapchain");
+      vkDestroySwapchainKHR(device, m_swapchain, nullptr);
     }
   } else {
-    m_swapChainImageViews.clear();
+    m_swapchainImageViews.clear();
   }
 
-  m_swapChain = VK_NULL_HANDLE;
-  m_swapChainImages.clear();
+  m_swapchain = VK_NULL_HANDLE;
+  m_swapchainImages.clear();
 
   m_surface = VK_NULL_HANDLE;
-  m_swapChainImageFormat = VK_FORMAT_UNDEFINED;
-  m_swapChainExtent = {};
+  m_swapchainImageFormat = VK_FORMAT_UNDEFINED;
+  m_swapchainExtent = {};
 }
 
 bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
   destroySwapchainImageViews(device);
 
   if (device == VK_NULL_HANDLE) {
-    std::cerr << "[Swapchain] Device is null\n";
+    LOGE("Device is null");
     return false;
   }
 
   const auto &images = swapchainImages();
   if (images.empty()) {
-    std::cerr << "[Swapchain] Swapchain images are empty\n";
+    LOGE("Swapchain images are empty");
     return false;
   }
 
   VkFormat format = swapchainImageFormat();
   if (format == VK_FORMAT_UNDEFINED) {
-    std::cerr << "[Swapchain] Swapchain format undefined\n";
+    LOGE("Swapchain format undefined");
     return false;
   }
 
-  m_swapChainImageViews.resize(images.size(), VK_NULL_HANDLE);
+  m_swapchainImageViews.resize(images.size(), VK_NULL_HANDLE);
 
   for (size_t i = 0; i < images.size(); ++i) {
     VkImageViewCreateInfo viewInfo{};
@@ -316,30 +304,28 @@ bool VkSwapchain::createSwapchainImageViews(VkDevice device) {
     viewInfo.subresourceRange.layerCount = 1;
 
     VkResult res = vkCreateImageView(device, &viewInfo, nullptr,
-                                     &m_swapChainImageViews[i]);
+                                     &m_swapchainImageViews[i]);
     if (res != VK_SUCCESS) {
-      std::cerr << "[Swapchain] vkCreateImageView() failed at index " << i
-                << " error=" << res << "\n";
+      LOGE("vkCreateImageView() failed at index {} error=", i,
+           fmt::underlying(res));
       destroySwapchainImageViews(device);
       return false;
     }
   }
 
-  std::cout << "[Swapchain] Created " << m_swapChainImageViews.size()
-            << " swapchain image views\n";
   return true;
 }
 
 void VkSwapchain::destroySwapchainImageViews(VkDevice device) noexcept {
   if (device == VK_NULL_HANDLE) {
-    m_swapChainImageViews.clear();
+    m_swapchainImageViews.clear();
     return;
   }
 
-  for (VkImageView v : m_swapChainImageViews) {
+  for (VkImageView v : m_swapchainImageViews) {
     if (v != VK_NULL_HANDLE) {
       vkDestroyImageView(device, v, nullptr);
     }
   }
-  m_swapChainImageViews.clear();
+  m_swapchainImageViews.clear();
 }

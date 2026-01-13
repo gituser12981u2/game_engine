@@ -2,6 +2,7 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
+#include "backend/profiling/prof.hpp"
 #include "backend/profiling/upload_profiler.hpp"
 #include "util/vk_barrier.hpp"
 
@@ -136,11 +137,14 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::StagingAllocatedBytes,
-                totalBytes);
-  }
+  PROF_UPLOAD_ADD(UploadProfiler::Stat::StagingCreatedCount, 1);
+  PROF_UPLOAD_ADD(UploadProfiler::Stat::StagingAllocatedBytes, totalBytes);
+
+  // if (m_profiler != nullptr) {
+  //   profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedCount, 1);
+  //   profilerAdd(m_profiler, UploadProfiler::Stat::StagingAllocatedBytes,
+  //               totalBytes);
+  // }
 
   {
     void *mapped = nullptr;

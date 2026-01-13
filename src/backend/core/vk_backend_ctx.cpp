@@ -7,9 +7,6 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Backend.Ctx");
-#define LOG_TU_LOGGER() ThisLogger()
-
 bool VkBackendCtx::init(std::span<const char *const> platformExtensions,
                         bool enableValidation) {
   shutdown();

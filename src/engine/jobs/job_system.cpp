@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <iostream>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -31,7 +30,6 @@ bool JobSystem::init(uint32_t threadCount) {
     m_workers.emplace_back([this, i] { workerMain(i); });
   }
 
-  std::cerr << "JOB SYSTEM STARTED\n";
   return true;
 }
 

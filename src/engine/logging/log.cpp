@@ -14,7 +14,7 @@ namespace log {
 
 // Pattern: time | level | thread | logger | msg
 static constexpr const char *kPattern =
-    "%Y-%m-%d %H:%M:%S.%e | %^%l%$ | t:%t | %n | %s:%# | %v";
+    "%Y-%m-%d %H:%M:%S.%e | %^%l%$ | t:%t | %s:%# | %v";
 
 static std::shared_ptr<spdlog::logger> quark;
 
@@ -61,7 +61,12 @@ void shutdown() {
   spdlog::drop_all();
 }
 
-std::shared_ptr<spdlog::logger> &engine() { return quark; }
+std::shared_ptr<spdlog::logger> &engine() {
+  if (!quark) {
+    init();
+  }
+  return quark;
+}
 
 std::shared_ptr<spdlog::logger> get(std::string_view name) {
   if (!quark) {

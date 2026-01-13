@@ -35,8 +35,7 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Render.Renderer");
-#define LOG_TU_LOGGER() ThisLogger()
+#define GE_TU_LOGGER_NAME "Render.Renderer";
 
 static constexpr VkDeviceSize kMiB = 1024ULL * 1024ULL;
 
@@ -558,12 +557,14 @@ const MeshGpu *Renderer::get(MeshHandle handle) const {
 
 TextureHandle Renderer::createTextureFromFile(const std::string &path,
                                               bool flipY) {
+
   return m_resources.materials().createTextureFromFile(
       m_uploads.staticRecorder(0), path, flipY);
 }
 
 uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
   // TODO: make logic for if static or frame recorder
+  LOGI("Creating Material from texture");
   return m_resources.materials().createMaterialFromTexture(
       m_uploads.staticRecorder(0), handle);
 }

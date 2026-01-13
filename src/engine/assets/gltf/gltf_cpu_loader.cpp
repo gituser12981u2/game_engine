@@ -119,7 +119,7 @@ static std::string baseColorUri(const cgltf_material *material) {
   }
 
   const cgltf_image *img = tex->image;
-  if (img->uri != nullptr) {
+  if (img->uri == nullptr) {
     return {};
   }
 

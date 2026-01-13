@@ -2,6 +2,7 @@ add_library(quark_backend_profiling STATIC
     vk_gpu_profiler.cpp
     upload_profiler.cpp
     profiling_logger.cpp
+    prof.cpp
 )
 
 target_include_directories(quark_backend_profiling

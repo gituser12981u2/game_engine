@@ -11,6 +11,10 @@
 #include <functional>
 #include <string>
 
+#if defined(GE_PROF_TELEMETRY)
+profiling::Telemetry m_profTelemetry{};
+#endif
+
 struct AppConfig {
   uint32_t width = 800;
   uint32_t height = 600;

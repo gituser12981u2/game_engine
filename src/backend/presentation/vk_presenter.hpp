@@ -10,6 +10,34 @@
 #include <vulkan/vulkan_core.h>
 
 // Owns VulkanSwapchain and VkSurfaceKHR
+/**
+ * @brief Owns the presentation surface (VkSurfaceKHR) and swapchain resources
+ * for a window
+ *
+ * Responsibilities:
+ * - Create/destroy the window presentation surface (VkSurfaceKHR)
+ * - Create/destroy the swapchain and its image views via VkSwapchain
+ * - Recreate the swapchain when the framebuffer size changes or when the
+ * swapchain become out-of-date
+ *
+ * Typical usage:
+ * - init() once after the Vulkan device and window are created
+ * - On resize/out-of-date/suboptimal events, call recreateSwapchain()
+ * - shutdown() on teardown (idempotent)
+ *
+ * Ownership:
+ * - VkPresenter owns VkSurfaceKHR
+ * - VkPresenter owns VkSwapchain
+ * - VkBackendCtx and GlfwWindow are non-owning and must outlive VkPresenter
+ *
+ * Recreation behavior:
+ * - recreateSwapchain() queries the current framebuffer size from the window
+ * - If minimized (0x0 framebuffer), recreation is skipped and returns false
+ *
+ * Lifetime:
+ * - init() must be called before use
+ * - shutdown() is idempotent
+ */
 class VkPresenter {
 public:
   VkPresenter() = default;
@@ -34,10 +62,40 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Creates the window surface and initializes the swapchain
+   *
+   * Responsibilities:
+   * - shutdown() any existing resources
+   * - Create VkSurfaceKHR from the window
+   * - Initialize VkSwapchain and create swapchain image views
+   *
+   * Preconditions:
+   * - window != nullptr
+   * - width > 0 and height > 0
+   * - ctx is initialized
+   *
+   * Postconditions:
+   * - m_surface != VK_NULL_HANDLE
+   * - swapchain image views are created and accessible via colorViews()
+   *
+   *
+   * @return true on success; false on failure. On failure, the object remains
+   * in shutdown-safe state
+   */
   bool init(VkBackendCtx &ctx, GlfwWindow *window, uint32_t width,
             uint32_t height);
   void shutdown() noexcept;
 
+  /**
+   * @brief Recreates the swapchain and its image views using the current
+   * framebuffer size
+   *
+   * Return false if:
+   * - The presenter is not initialized
+   * - The window is minimized
+   * - Swapchain recreation fails
+   */
   [[nodiscard]] bool recreateSwapchain();
 
   [[nodiscard]] VkFormat colorFormat() const {
