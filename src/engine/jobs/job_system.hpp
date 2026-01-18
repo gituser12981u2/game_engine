@@ -5,13 +5,23 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#if defined(ENABLE_TELEMETRY)
+#include "backend/profiling/telemetry/telemetry.hpp"
+#endif
+
 class JobSystem {
 public:
+  struct Hooks {
+    void (*onWorkerStart)(uint32_t workerIndex) = nullptr;
+    void (*onWorkerStop)(uint32_t workerIndex) = nullptr;
+  };
+
   using JobFn = std::function<void()>;
 
   static constexpr uint32_t kInvalidWorkerIndex = 0xFFFF'FFFFU;
@@ -26,6 +36,7 @@ public:
   JobSystem &operator=(JobSystem &&) = delete;
 
   bool init(uint32_t threadCount = 0);
+  // bool init(uint32_t threadCount = 0, Hooks hooks);
   void shutdown() noexcept;
 
   [[nodiscard]] bool initialized() const noexcept { return m_running.load(); }
@@ -104,6 +115,8 @@ public:
   }
 
 private:
+  Hooks m_hooks{};
+
   struct Job {
     JobFn fn;
   };
@@ -127,4 +140,8 @@ private:
   std::atomic<uint64_t> m_jobsExecuted{0};
 
   static thread_local uint32_t s_tlsWorkerIndex;
+
+#if defined(ENABLE_TELEMETRY)
+  std::vector<std::unique_ptr<profiling::Telemetry>> m_workerTelemetry;
+#endif
 };

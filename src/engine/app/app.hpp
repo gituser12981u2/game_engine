@@ -2,6 +2,7 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/geometry/mesh_factory.hpp"
 #include "engine/jobs/job_system.hpp"
 #include "platform/window/glfw_window.hpp"
@@ -10,10 +11,6 @@
 #include <cstdint>
 #include <functional>
 #include <string>
-
-#if defined(GE_PROF_TELEMETRY)
-profiling::Telemetry m_profTelemetry{};
-#endif
 
 struct AppConfig {
   uint32_t width = 800;
@@ -62,6 +59,10 @@ private:
   Renderer m_renderer;
 
   MeshFactory m_meshes{m_renderer};
+
+#if defined(ENABLE_TELEMETRY)
+  profiling::Telemetry m_profTelemetry;
+#endif
 
   AppConfig m_cfg{};
   bool m_inited = false;

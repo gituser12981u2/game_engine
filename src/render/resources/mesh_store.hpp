@@ -10,15 +10,13 @@
 #include <cstdint>
 #include <vector>
 
-class UploadProfiler;
-
 struct MeshHandle {
   uint32_t id = UINT32_MAX;
 };
 
 class MeshStore {
 public:
-  bool init(VkBackendCtx &ctx, UploadProfiler *profiler);
+  bool init(VkBackendCtx &ctx);
   void shutdown() noexcept;
 
   MeshHandle createMesh(VkUploadContext::Recorder staticRecorder,
@@ -31,6 +29,5 @@ public:
 
 private:
   std::vector<MeshGpu> m_meshes;
-  VkBufferUploader m_uploader;                  // non-owning
-  UploadProfiler *m_uploaderProfiler = nullptr; // non-owning
+  VkBufferUploader m_uploader; // non-owning
 };

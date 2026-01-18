@@ -13,8 +13,6 @@
 #include <glm/ext/vector_float4.hpp>
 #include <vulkan/vulkan_core.h>
 
-class UploadProfiler;
-
 struct TextureHandle {
   uint32_t id = UINT32_MAX;
 };
@@ -22,7 +20,7 @@ struct TextureHandle {
 class MaterialSystem {
 public:
   bool init(VkBackendCtx &ctx, VkDescriptorSetLayout materialSetLayout,
-            uint32_t materialCapacity, UploadProfiler *profiler = nullptr);
+            uint32_t materialCapacity);
   void shutdown() noexcept;
 
   TextureHandle createTextureFromFile(VkUploadContext::Recorder staticRec,
@@ -69,6 +67,4 @@ private:
   TextureHandle m_whiteTexture{UINT32_MAX};
 
   uint32_t m_activeMaterial = UINT32_MAX;
-
-  UploadProfiler *m_uploaderProfiler = nullptr; // non-owning
 };

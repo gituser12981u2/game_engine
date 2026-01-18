@@ -2,7 +2,6 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -78,11 +77,10 @@ public:
 
   // perFrameBytes: bytes reserved for each frame slice
   bool initFrameRing(VkBackendCtx &ctx, uint32_t framesInFlight,
-                     VkDeviceSize bytesPerFrameSlice, uint32_t threadCount,
-                     UploadProfiler *profiler);
+                     VkDeviceSize bytesPerFrameSlice, uint32_t threadCount);
 
   bool initOneShot(VkBackendCtx &ctx, VkDeviceSize totalBytes,
-                   uint32_t threadCount, UploadProfiler *profiler);
+                   uint32_t threadCount);
 
   void shutdown() noexcept;
 
@@ -114,8 +112,7 @@ public:
 
 private:
   bool initCommon(VkBackendCtx &ctx, Mode mode, uint32_t framesInflight,
-                  VkDeviceSize bytesPerFrameSlice, uint32_t threadCount,
-                  UploadProfiler *profiler);
+                  VkDeviceSize bytesPerFrameSlice, uint32_t threadCount);
 
   static VkDeviceSize alignUp(VkDeviceSize v, VkDeviceSize a) noexcept;
 
@@ -145,8 +142,7 @@ private:
   [[nodiscard]] VkCommandBuffer cmdAt(uint32_t frameIndex,
                                       uint32_t threadIndex) const noexcept;
 
-  VkBackendCtx *m_ctx = nullptr;        // non-owning
-  UploadProfiler *m_profiler = nullptr; // non-owning
+  VkBackendCtx *m_ctx = nullptr; // non-owning
 
   Mode m_mode = Mode::FrameRing;
 

@@ -12,7 +12,7 @@ class VkBufferUploader {
 public:
   VkBufferUploader() = default;
 
-  bool init(VmaAllocator allocator, UploadProfiler *profiler);
+  bool init(VmaAllocator allocator);
   void shutdown() noexcept;
 
   bool uploadToDeviceLocalBuffer(VkUploadContext::Recorder recorder,
@@ -21,6 +21,5 @@ public:
                                  VkBufferObj &outBuffer);
 
 private:
-  VmaAllocator m_allocator = nullptr;   // non-owning
-  UploadProfiler *m_profiler = nullptr; // non-owning
+  VmaAllocator m_allocator = nullptr; // non-owning
 };

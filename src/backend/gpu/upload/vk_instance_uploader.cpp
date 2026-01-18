@@ -1,10 +1,14 @@
 #include "backend/gpu/upload/vk_instance_uploader.hpp"
 
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 
 #include <glm/ext/matrix_float4x4.hpp>
 #include <iostream>
 #include <vulkan/vulkan_core.h>
+
+bool VkInstanceUploader::init() { return true; }
+
+void VkInstanceUploader::shutdown() noexcept {}
 
 InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
     VkUploadContext::Recorder recorder, VkBuffer instanceBuffer,
@@ -44,10 +48,8 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
 
   std::memcpy(stageAlloc.ptr, models.data(), static_cast<size_t>(bytes));
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, bytes);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::UploadMemcpyCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::UploadMemcpyBytes, bytes);
 
   const uint32_t base = cursorInstances;
   const VkDeviceSize dstOffset =
@@ -59,10 +61,8 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
 
   cursorInstances += count;
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceUploadCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceUploadBytes, bytes);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::InstanceUploadCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::InstanceUploadBytes, bytes);
 
   out.baseInstance = base;
   out.instanceCount = count;

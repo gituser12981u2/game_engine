@@ -2,8 +2,7 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
-#include "backend/profiling/prof.hpp"
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "util/vk_barrier.hpp"
 
 #include <algorithm>
@@ -29,8 +28,6 @@ VkUploadContext &VkUploadContext::operator=(VkUploadContext &&other) noexcept {
   shutdown();
 
   m_ctx = std::exchange(other.m_ctx, nullptr);
-  m_profiler = std::exchange(other.m_profiler, nullptr);
-
   m_mode = std::exchange(other.m_mode, Mode::FrameRing);
 
   m_framesInFlight = std::exchange(other.m_framesInFlight, 0);
@@ -84,13 +81,11 @@ VkCommandBuffer VkUploadContext::cmdAt(uint32_t frameIndex,
 bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
                                  uint32_t framesInflight,
                                  VkDeviceSize bytesPerFrameSlice,
-                                 uint32_t threadCount,
-                                 UploadProfiler *profiler) {
+                                 uint32_t threadCount) {
   shutdown();
 
   m_ctx = &ctx;
   m_mode = mode;
-  m_profiler = profiler;
 
   m_framesInFlight = framesInflight;
   m_threadCount = threadCount;
@@ -137,14 +132,8 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
     return false;
   }
 
-  PROF_UPLOAD_ADD(UploadProfiler::Stat::StagingCreatedCount, 1);
-  PROF_UPLOAD_ADD(UploadProfiler::Stat::StagingAllocatedBytes, totalBytes);
-
-  // if (m_profiler != nullptr) {
-  //   profilerAdd(m_profiler, UploadProfiler::Stat::StagingCreatedCount, 1);
-  //   profilerAdd(m_profiler, UploadProfiler::Stat::StagingAllocatedBytes,
-  //               totalBytes);
-  // }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::StagingCreatedCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::StagingAllocatedBytes, totalBytes);
 
   {
     void *mapped = nullptr;
@@ -219,27 +208,25 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
 
 bool VkUploadContext::initFrameRing(VkBackendCtx &ctx, uint32_t framesInFlight,
                                     VkDeviceSize bytesPerFrameSlice,
-                                    uint32_t threadCount,
-                                    UploadProfiler *profiler) {
+                                    uint32_t threadCount) {
   if (framesInFlight == 0 || bytesPerFrameSlice == 0 || threadCount == 0) {
     std::cerr << "[UploadCtx] Invalid initFrameRing args\n";
     return false;
   }
 
   return initCommon(ctx, Mode::FrameRing, framesInFlight, bytesPerFrameSlice,
-                    threadCount, profiler);
+                    threadCount);
 }
 
 bool VkUploadContext::initOneShot(VkBackendCtx &ctx, VkDeviceSize totalBytes,
-                                  uint32_t threadCount,
-                                  UploadProfiler *profiler) {
+                                  uint32_t threadCount) {
   if (totalBytes == 0 || threadCount == 0) {
     std::cerr << "[UploadCtx] Invalid initOnShot args\n";
     return false;
   }
 
   return initCommon(ctx, Mode::OneShot, /*framesInflight=*/1, totalBytes,
-                    threadCount, profiler);
+                    threadCount);
 }
 
 void VkUploadContext::shutdown() noexcept {
@@ -305,8 +292,6 @@ void VkUploadContext::shutdown() noexcept {
   m_staging.shutdown();
 
   m_ctx = nullptr;
-  m_profiler = nullptr;
-
   m_mode = Mode::FrameRing;
   m_framesInFlight = 0;
   m_threadCount = 0;
@@ -456,9 +441,8 @@ VkStagingAlloc VkUploadContext::allocStaging(uint32_t frameIndex,
       out.offset = absOffset;
       out.size = size;
 
-      if (m_profiler != nullptr) {
-        profilerAdd(m_profiler, UploadProfiler::Stat::StagingUsedBytes, size);
-      }
+      PROFILE_UPLOAD_ADD(UploadProfiler::Stat::StagingUsedBytes, size);
+
       return out;
     }
   }
@@ -512,9 +496,7 @@ bool VkUploadContext::submit(uint32_t frameIndex, bool wait) {
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadSubmitCount, 1);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::UploadSubmitCount);
 
   if (wait) {
     res = vkWaitForFences(m_ctx->device(), 1, &fence, VK_TRUE, UINT64_MAX);

@@ -1,4 +1,4 @@
-#include "backend/profiling/prof.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 
 namespace profiling {
 

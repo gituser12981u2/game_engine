@@ -17,8 +17,9 @@ find_package(Stb REQUIRED)
 
 find_package(spdlog CONFIG REQUIRED)
 
-
 find_path(CGLTF_INCLUDE_DIRS "cgltf.h")
+
+add_compile_definitions(ENABLE_TELEMETRY)
 
 add_compile_options(
   $<$<COMPILE_LANGUAGE:CXX>:-Wall>
@@ -28,7 +29,4 @@ add_compile_options(
   $<$<COMPILE_LANGUAGE:CXX>:-Wshadow>
 )
 
-
-
 add_subdirectory(src)
-

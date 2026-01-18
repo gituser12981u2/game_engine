@@ -1,8 +1,8 @@
 #include "render/resources/material_system.hpp"
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 #include "engine/assets/stb_image/stb_image_loader.hpp"
+#include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
 
 #include <algorithm>
@@ -30,21 +30,16 @@ uint32_t clampMateriaCapacity(VkPhysicalDevice physicalDevice,
 
 bool MaterialSystem::init(VkBackendCtx &ctx,
                           VkDescriptorSetLayout materialSetLayout,
-                          uint32_t materialCapacity, UploadProfiler *profiler) {
+                          uint32_t materialCapacity) {
   shutdown();
 
-  m_uploaderProfiler = profiler;
-
-  VkDevice device = ctx.device();
-  VmaAllocator allocator = ctx.allocator();
-
-  if (!m_textureUploader.init(allocator, device, m_uploaderProfiler)) {
+  if (!m_textureUploader.init(ctx)) {
     std::cerr << "[MaterialSystem] Failed to init texture uploader\n";
     shutdown();
     return false;
   }
 
-  if (!m_materialUploader.init(m_uploaderProfiler)) {
+  if (!m_materialUploader.init()) {
     std::cerr << "[MaterialSystem] Failed to init material uploader\n";
     shutdown();
     return false;
@@ -58,7 +53,7 @@ bool MaterialSystem::init(VkBackendCtx &ctx,
     return false;
   }
 
-  if (!m_materialSets.init(device, materialSetLayout, materialCapacity)) {
+  if (!m_materialSets.init(ctx.device(), materialSetLayout, materialCapacity)) {
     std::cerr << "[MaterialSystem] Failed to init material sets\n";
     shutdown();
     return false;
@@ -84,8 +79,6 @@ void MaterialSystem::shutdown() noexcept {
 
   m_defaultMaterial = UINT32_MAX;
   m_activeMaterial = UINT32_MAX;
-
-  m_uploaderProfiler = nullptr;
 }
 
 bool MaterialSystem::createDefaultMaterial(

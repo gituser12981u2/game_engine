@@ -2,7 +2,6 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 
 #include <cstdint>
 #include <utility>
@@ -38,7 +37,7 @@ public:
 
   bool init(VkBackendCtx &ctx, uint32_t framesInFlight,
             VkDeviceSize staticTotalBytes, VkDeviceSize frameBudget,
-            uint32_t threadCount, UploadProfiler *profiler);
+            uint32_t threadCount);
   void shutdown() noexcept;
 
   bool beginFrame(uint32_t frameIndex);

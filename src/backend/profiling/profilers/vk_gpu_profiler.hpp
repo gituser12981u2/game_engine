@@ -6,8 +6,6 @@
 #include <utility>
 #include <vulkan/vulkan_core.h>
 
-class VkBackendCtx;
-
 class VkGpuProfiler {
 public:
   enum class Marker : std::uint8_t {

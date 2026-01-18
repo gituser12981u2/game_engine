@@ -1,7 +1,7 @@
 #include "vk_buffer_uploader.hpp"
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -9,17 +9,13 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
-bool VkBufferUploader::init(VmaAllocator allocator, UploadProfiler *profiler) {
+bool VkBufferUploader::init(VmaAllocator allocator) {
   m_allocator = allocator;
-  m_profiler = profiler;
 
   return true;
 }
 
-void VkBufferUploader::shutdown() noexcept {
-  m_allocator = nullptr;
-  m_profiler = nullptr;
-}
+void VkBufferUploader::shutdown() noexcept { m_allocator = nullptr; }
 
 bool VkBufferUploader::uploadToDeviceLocalBuffer(
     VkUploadContext::Recorder recorder, const void *data, VkDeviceSize size,
@@ -43,10 +39,8 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(
 
   std::memcpy(stageAlloc.ptr, data, static_cast<size_t>(size));
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, size);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::UploadMemcpyCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::UploadMemcpyBytes, size);
 
   // Device-local buffer
   outBuffer.shutdown();
@@ -57,17 +51,13 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::BufferAllocatedBytes, size);
-  }
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::BufferAllocatedBytes, size);
 
   recorder.cmdCopyToBuffer(outBuffer.handle(), /*dstOffset=*/0,
                            /*srcOffset=*/stageAlloc.offset, size);
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::BufferUploadCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::BufferUploadBytes, size);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::BufferUploadCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::BufferUploadCount, size);
 
   return true;
 }

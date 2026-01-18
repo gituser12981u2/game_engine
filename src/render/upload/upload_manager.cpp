@@ -7,8 +7,7 @@
 
 bool UploadManager::init(VkBackendCtx &ctx, uint32_t framesInFlight,
                          VkDeviceSize staticTotalBytes,
-                         VkDeviceSize frameBudget, uint32_t threadCount,
-                         UploadProfiler *profiler) {
+                         VkDeviceSize frameBudget, uint32_t threadCount) {
   if (framesInFlight == 0 || staticTotalBytes == 0 || frameBudget == 0 ||
       threadCount == 0) {
     std::cerr << "[UploadManager] init invalid args\n";
@@ -26,14 +25,13 @@ bool UploadManager::init(VkBackendCtx &ctx, uint32_t framesInFlight,
 
   m_staticActive = false;
 
-  if (!m_static.initOneShot(ctx, staticTotalBytes, threadCount, profiler)) {
+  if (!m_static.initOneShot(ctx, staticTotalBytes, threadCount)) {
     std::cerr << "[Renderer] Failed to init static upload context\n";
     shutdown();
     return false;
   }
 
-  if (!m_frame.initFrameRing(ctx, m_framesInFlight, frameBudget, threadCount,
-                             profiler)) {
+  if (!m_frame.initFrameRing(ctx, m_framesInFlight, frameBudget, threadCount)) {
     std::cerr << "[Renderer] Failed to init frame upload context\n";
     shutdown();
     return false;

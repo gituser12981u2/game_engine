@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/profiling/cpu_profiler.hpp"
-#include "backend/profiling/upload_profiler.hpp"
-#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/profiling/profilers/cpu_profiler.hpp"
+#include "backend/profiling/profilers/upload_profiler.hpp"
+#include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include <chrono>
 #include <ratio>
@@ -17,8 +17,8 @@ inline void ignore_snprintf(int rc) noexcept { (void)rc; }
 class FrameLogger {
 public:
   void setPeriod(uint64_t n) noexcept { m_period = n; }
-  void logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
-                   const UploadProfiler &upload) noexcept;
+  void logPerFrame(const CpuProfiler *cpu, const VkGpuProfiler &gpu,
+                   const UploadProfiler *upload) noexcept;
 
 private:
   bool shouldLog() noexcept;

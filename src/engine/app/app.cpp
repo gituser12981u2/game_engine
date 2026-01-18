@@ -1,6 +1,6 @@
 #include "app.hpp"
 
-#include "backend/profiling/prof.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/jobs/job_system.hpp"
 #include "engine/logging/log.hpp"
 
@@ -12,7 +12,7 @@
 bool EngineApp::init(const AppConfig &cfg) {
   shutdown();
 
-#if defined(GE_PROF_TELEMETRY)
+#if defined(ENABLE_TELEMETRY)
   profiling::setTlsTelemetry(&m_profTelemetry);
 #else
   profiling::setTlsTelemetry(nullptr);
@@ -77,6 +77,10 @@ void EngineApp::shutdown() noexcept {
   m_window.shutdown();
 
   m_inited = false;
+
+#if defined(ENABLE_TELEMETRY)
+  profiling::setTlsTelemetry(nullptr);
+#endif
 }
 
 void EngineApp::run(const std::function<void(float dt)> &tick) {

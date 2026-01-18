@@ -21,7 +21,9 @@ target_link_libraries(quark_render
         quark::backend::frame
         quark::backend::presentation
         quark::backend::graphics
+
         quark::backend::profiling
+        quark::backend::profiling::profilers
 
         quark::render::rendergraph
         quark::render::resources

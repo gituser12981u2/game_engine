@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -15,6 +16,8 @@ uint32_t JobSystem::currentWorkerIndex() noexcept { return s_tlsWorkerIndex; }
 bool JobSystem::init(uint32_t threadCount) {
   shutdown();
 
+  // m_hooks = hooks;
+
   uint32_t hc = std::max(1U, std::thread::hardware_concurrency());
   if (threadCount == 0) {
     threadCount = hc;
@@ -24,6 +27,14 @@ bool JobSystem::init(uint32_t threadCount) {
   m_threadCount = threadCount;
   m_stop.store(false, std::memory_order_relaxed);
   m_running.store(true, std::memory_order_release);
+
+#if defined(ENABLE_TELEMETRY)
+  m_workerTelemetry.clear();
+  m_workerTelemetry.reserve(threadCount);
+  for (uint32_t i = 0; i < threadCount; ++i) {
+    m_workerTelemetry.emplace_back(std::make_unique<profiling::Telemetry>());
+  }
+#endif
 
   m_workers.reserve(threadCount);
   for (uint32_t i = 0; i < threadCount; ++i) {
@@ -129,6 +140,14 @@ bool JobSystem::popJob(Job &out) {
 void JobSystem::workerMain(uint32_t workerIndex) {
   s_tlsWorkerIndex = workerIndex;
 
+#if defined(ENABLE_TELEMETRY)
+  profiling::setTlsTelemetry(m_workerTelemetry[workerIndex].get());
+#endif
+
+  if (m_hooks.onWorkerStart != nullptr) {
+    m_hooks.onWorkerStart(workerIndex);
+  }
+
   for (;;) {
     if (m_stop.load(std::memory_order_acquire)) {
       return;
@@ -147,6 +166,14 @@ void JobSystem::workerMain(uint32_t workerIndex) {
       m_jobsExecuted.fetch_add(1, std::memory_order_release);
     }
   }
+
+  if (m_hooks.onWorkerStop != nullptr) {
+    m_hooks.onWorkerStop(workerIndex);
+  }
+
+#if defined(ENABLE_TELEMETRY)
+  profiling::setTlsTelemetry(nullptr);
+#endif
 
   s_tlsWorkerIndex = kInvalidWorkerIndex;
 }

@@ -2,23 +2,22 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 #include "render/scene/scene_data.hpp"
 
 #include <iostream>
 
 bool ResourceStore::init(VkBackendCtx &ctx, const VkShaderInterface &interface,
-                         SceneData &data, UploadProfiler *profiler) {
+                         SceneData &data) {
   shutdown();
 
-  if (!m_meshes.init(ctx, profiler)) {
+  if (!m_meshes.init(ctx)) {
     std::cerr << "[ResourceStore] MeshStore init failed\n";
     shutdown();
     return false;
   }
 
   if (!m_materials.init(ctx, interface.setLayoutMaterial(),
-                        data.materialCapacity(), profiler)) {
+                        data.materialCapacity())) {
     std::cerr << "[ResourceStore] MaterialSystem init failed\n";
     shutdown();
     return false;
