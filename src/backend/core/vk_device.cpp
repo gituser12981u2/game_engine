@@ -9,9 +9,6 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Backend.Device");
-#define LOG_TU_LOGGER() ThisLogger()
-
 namespace {
 
 #ifdef __APPLE__

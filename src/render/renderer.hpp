@@ -4,10 +4,8 @@
 #include "backend/frame/vk_frame_manager.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
-#include "backend/profiling/cpu_profiler.hpp"
-#include "backend/profiling/profiling_logger.hpp"
-#include "backend/profiling/upload_profiler.hpp"
-#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/profiling/logging/profiling_logger.hpp"
+#include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include "render/rendergraph/main_pass.hpp"
 #include "render/rendergraph/swapchain_targets.hpp"
@@ -35,6 +33,7 @@
 
 class VkPresenter;
 class VkBackendCtx;
+class JobSystem;
 
 struct DrawItem {
   MeshHandle mesh{};
@@ -84,9 +83,7 @@ public:
 
     shutdown();
 
-    m_cpuProfiler = std::move(other.m_cpuProfiler);
     m_gpuProfiler = std::move(other.m_gpuProfiler);
-    m_uploadProfiler = std::move(other.m_uploadProfiler);
     m_profileReporter = std::move(other.m_profileReporter);
 
     m_framesInFlight = std::exchange(other.m_framesInFlight, 0U);
@@ -106,17 +103,12 @@ public:
     m_fragPath = std::exchange(other.m_fragPath, {});
     m_cameraUbo = other.m_cameraUbo;
 
-    // Rebind uploader's inside stores to this renderer's command context
-    if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE) {
-      (void)m_resources.rebind(*m_ctx, m_uploads.statik());
-      (void)m_resources.rebind(*m_ctx, m_uploads.frame());
-    }
-
     return *this;
   }
 
   bool init(VkBackendCtx &ctx, VkPresenter &presenter, uint32_t framesInFlight,
-            const std::string &vertSpvPath, const std::string &fragSpvPath);
+            const std::string &vertSpvPath, const std::string &fragSpvPath,
+            JobSystem &jobs);
   void shutdown() noexcept;
 
   [[nodiscard]] bool drawFrame(VkPresenter &presenter, MeshHandle mesh);
@@ -148,6 +140,9 @@ public:
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);
 
+  bool beginStaticUploads();
+  bool endStaticUploads(bool wait);
+
   // TODO: make PImpl
 private:
   bool createDefaultMaterial() noexcept;
@@ -170,13 +165,12 @@ private:
 
   std::vector<VkImageLayout> m_swapLayouts;
 
-  CpuProfiler m_cpuProfiler;
   VkGpuProfiler m_gpuProfiler;
-  UploadProfiler m_uploadProfiler;
   profiling::FrameLogger m_profileReporter{};
 
   uint32_t m_framesInFlight = 0;
   VkBackendCtx *m_ctx = nullptr; // non-owning
+  JobSystem *m_jobs = nullptr;   // non-owning
 
   SwapchainTargets m_targets;
   VkShaderInterface m_interface;

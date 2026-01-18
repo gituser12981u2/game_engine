@@ -1,24 +1,13 @@
 #include "vk_commands.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstdint>
-#include <iostream>
+#include <fmt/format.h>
 #include <vulkan/vulkan_core.h>
 
 bool VkCommands::init(VkBackendCtx &ctx, VkCommandPoolCreateFlags flags) {
-  if (ctx.device() == VK_NULL_HANDLE) {
-    std::cerr << "[Cmd] Device is null\n";
-    return false;
-  }
-
-  uint32_t family = ctx.graphicsQueueFamily();
-  if (family == UINT32_MAX) {
-    std::cerr << "[Cmd] ctx.graphicsQueueFamily invalid\n";
-    return false;
-  }
-
-  // Re-init
   shutdown();
 
   m_ctx = &ctx;
@@ -30,21 +19,21 @@ bool VkCommands::init(VkBackendCtx &ctx, VkCommandPoolCreateFlags flags) {
 
   VkResult res = vkCreateCommandPool(ctx.device(), &poolInfo, nullptr, &m_pool);
   if (res != VK_SUCCESS) {
-    std::cerr << "[Cmd] vkCreateCommandPool failed: " << res << "\n";
+    LOGE("vkCreateCommandPool failed: {}", fmt::underlying(res));
     m_pool = VK_NULL_HANDLE;
     m_ctx = VK_NULL_HANDLE;
     return false;
   }
 
-  std::cout << "[Cmd] Command pool created\n";
+  LOGI("Command pool created");
   return true;
 }
 
 bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
   VkDevice device = m_ctx->device();
 
-  if (device == VK_NULL_HANDLE || m_pool == VK_NULL_HANDLE) {
-    std::cerr << "[Cmd] Device or command pool not read\n";
+  if (m_pool == VK_NULL_HANDLE) {
+    LOGE("Command pool not created");
     return false;
   }
 
@@ -60,12 +49,12 @@ bool VkCommands::allocate(uint32_t count, VkCommandBufferLevel level) {
 
   VkResult res = vkAllocateCommandBuffers(device, &allocInfo, m_buffers.data());
   if (res != VK_SUCCESS) {
-    std::cerr << "[Cmd] vkAllocateCommandBuffers failed: " << res << "\n";
+    LOGE("vkAllocatedCommandBuffers failed: {}", fmt::underlying(res));
     m_buffers.clear();
     return false;
   }
 
-  std::cout << "[Cmd] Allocated " << m_buffers.size() << " command buffers\n";
+  LOGI("Allocated {} command buffers", m_buffers.size());
   return true;
 }
 
@@ -76,6 +65,7 @@ void VkCommands::free() noexcept {
                          static_cast<uint32_t>(m_buffers.size()),
                          m_buffers.data());
   }
+
   m_buffers.clear();
 }
 
@@ -84,6 +74,7 @@ void VkCommands::shutdown() noexcept {
 
   if (m_ctx != nullptr && m_ctx->device() != VK_NULL_HANDLE &&
       m_pool != VK_NULL_HANDLE) {
+    LOGD("Destroying command pool");
     vkDestroyCommandPool(m_ctx->device(), m_pool, nullptr);
   }
 

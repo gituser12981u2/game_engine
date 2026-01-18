@@ -1,7 +1,6 @@
 #pragma once
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -16,24 +15,16 @@ struct InstanceUploadResult {
 
 class VkInstanceUploader {
 public:
-  bool init(VkUploadContext *upload, UploadProfiler *profiler) {
-    m_upload = upload;
-    m_profiler = profiler;
-    return m_upload != nullptr;
-  }
-  void shutdown() noexcept {
-    m_upload = nullptr;
-    m_profiler = nullptr;
-  }
+  bool init();
+  void shutdown() noexcept;
 
-  InstanceUploadResult uploadMat4Instances(VkBuffer instanceBuffer,
+  // TODO: make cursorInstances multi threaded for parallelized
+  // batching/instance writes
+  InstanceUploadResult uploadMat4Instances(VkUploadContext::Recorder recorder,
+                                           VkBuffer instanceBuffer,
                                            VkDeviceSize frameBaseBytes,
                                            VkDeviceSize frameStrideBytes,
                                            uint32_t maxInstancesPerFrame,
                                            uint32_t &cursorInstances,
                                            std::span<const glm::mat4> models);
-
-private:
-  VkUploadContext *m_upload = nullptr;  // non-owning
-  UploadProfiler *m_profiler = nullptr; // non-owning
 };

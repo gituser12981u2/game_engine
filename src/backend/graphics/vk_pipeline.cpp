@@ -12,26 +12,13 @@
 #include <unistd.h>
 #include <vulkan/vulkan_core.h>
 
-DEFINE_TU_LOGGER("Backend.Graphics.Pipeline");
-#define LOG_TU_LOGGER() ThisLogger()
-
 bool VkGraphicsPipeline::init(VkDevice device, VkFormat colorFormat,
                               VkFormat depthFormat,
                               VkPipelineLayout pipelineLayout,
                               const std::string &vertSpvPath,
                               const std::string &fragSpvPath) {
-  if (depthFormat == VK_FORMAT_UNDEFINED) {
-    LOGE("depthFormat is undefeind");
-    return false;
-  }
-
-  if (colorFormat == VK_FORMAT_UNDEFINED) {
-    LOGE("colorFormat is undefeind");
-    return false;
-  }
-
   if (pipelineLayout == VK_NULL_HANDLE) {
-    std::cerr << "[Pipeline] pipelineLayout is null\n";
+    LOGE("pipelineLayout is null");
     return false;
   }
 

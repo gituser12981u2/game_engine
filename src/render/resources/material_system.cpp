@@ -1,8 +1,8 @@
 #include "render/resources/material_system.hpp"
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
 #include "engine/assets/stb_image/stb_image_loader.hpp"
+#include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
 
 #include <algorithm>
@@ -28,23 +28,18 @@ uint32_t clampMateriaCapacity(VkPhysicalDevice physicalDevice,
 
 } // namespace
 
-bool MaterialSystem::init(VkBackendCtx &ctx, VkUploadContext &upload,
+bool MaterialSystem::init(VkBackendCtx &ctx,
                           VkDescriptorSetLayout materialSetLayout,
-                          uint32_t materialCapacity, UploadProfiler *profiler) {
+                          uint32_t materialCapacity) {
   shutdown();
 
-  m_uploaderProfiler = profiler;
-
-  VkDevice device = ctx.device();
-  VmaAllocator allocator = ctx.allocator();
-
-  if (!m_textureUploader.init(allocator, device, &upload, m_uploaderProfiler)) {
+  if (!m_textureUploader.init(ctx)) {
     std::cerr << "[MaterialSystem] Failed to init texture uploader\n";
     shutdown();
     return false;
   }
 
-  if (!m_materialUploader.init(&upload, m_uploaderProfiler)) {
+  if (!m_materialUploader.init()) {
     std::cerr << "[MaterialSystem] Failed to init material uploader\n";
     shutdown();
     return false;
@@ -52,14 +47,13 @@ bool MaterialSystem::init(VkBackendCtx &ctx, VkUploadContext &upload,
 
   const uint32_t cappedCapacity =
       clampMateriaCapacity(ctx.physicalDevice(), materialCapacity);
-
   if (cappedCapacity == 0) {
     std::cerr << "[MaterialSystem] Material capacity invalid after clamp\n";
     shutdown();
     return false;
   }
 
-  if (!m_materialSets.init(device, materialSetLayout, materialCapacity)) {
+  if (!m_materialSets.init(ctx.device(), materialSetLayout, materialCapacity)) {
     std::cerr << "[MaterialSystem] Failed to init material sets\n";
     shutdown();
     return false;
@@ -85,16 +79,16 @@ void MaterialSystem::shutdown() noexcept {
 
   m_defaultMaterial = UINT32_MAX;
   m_activeMaterial = UINT32_MAX;
-
-  m_uploaderProfiler = nullptr;
 }
 
-bool MaterialSystem::createDefaultMaterial() noexcept {
+bool MaterialSystem::createDefaultMaterial(
+    VkUploadContext::Recorder staticRecorder) noexcept {
   VkTexture2D tex;
 
   static constexpr std::array<std::uint8_t, 4> kWhiteRGBA8{255, 255, 255, 255};
 
-  if (!m_textureUploader.uploadRGBA8(kWhiteRGBA8.data(), 1, 1, tex)) {
+  if (!m_textureUploader.uploadRGBA8(staticRecorder, kWhiteRGBA8.data(), 1, 1,
+                                     tex)) {
     std::cerr << "[MaterialSystem] Failed to create default white texture\n";
     return false;
   }
@@ -102,7 +96,7 @@ bool MaterialSystem::createDefaultMaterial() noexcept {
   m_textures.push_back(std::move(tex));
   m_whiteTexture = TextureHandle{static_cast<uint32_t>(m_textures.size() - 1)};
 
-  m_defaultMaterial = createMaterialFromTexture(m_whiteTexture);
+  m_defaultMaterial = createMaterialFromTexture(staticRecorder, m_whiteTexture);
   if (m_defaultMaterial == UINT32_MAX) {
     std::cerr << "[MaterialSystem] Failed to create default material\n";
     return false;
@@ -112,8 +106,9 @@ bool MaterialSystem::createDefaultMaterial() noexcept {
   return true;
 }
 
-TextureHandle MaterialSystem::createTextureFromFile(const std::string &path,
-                                                    bool flipY) {
+TextureHandle
+MaterialSystem::createTextureFromFile(VkUploadContext::Recorder staticRecorder,
+                                      const std::string &path, bool flipY) {
   engine::ImageData img;
   if (!engine::assets::loadImageRGBA8(path, img, flipY)) {
     std::cerr << "[MaterialSystem] Failed to load image: " << path << "\n";
@@ -121,8 +116,8 @@ TextureHandle MaterialSystem::createTextureFromFile(const std::string &path,
   }
 
   VkTexture2D tex;
-  if (!m_textureUploader.uploadRGBA8(img.pixels.data(), img.width, img.height,
-                                     tex)) {
+  if (!m_textureUploader.uploadRGBA8(staticRecorder, img.pixels.data(),
+                                     img.width, img.height, tex)) {
     std::cerr << "[MaterialSystem] Failed to create texture from file\n";
     return {};
   }
@@ -131,8 +126,9 @@ TextureHandle MaterialSystem::createTextureFromFile(const std::string &path,
   return TextureHandle{static_cast<uint32_t>(m_textures.size() - 1)};
 }
 
-bool MaterialSystem::createTextureFromImage(const engine::ImageData &img,
-                                            VkTexture2D &outTex) {
+bool MaterialSystem::createTextureFromImage(
+    VkUploadContext::Recorder staticRecorder, const engine::ImageData &img,
+    VkTexture2D &outTex) {
   if (!img.valid()) {
     std::cerr << "[MaterialSystem] createTextureFromImage invalid image\n";
     return false;
@@ -145,12 +141,13 @@ bool MaterialSystem::createTextureFromImage(const engine::ImageData &img,
     return false;
   }
 
-  return m_textureUploader.uploadRGBA8(img.pixels.data(), img.width, img.height,
-                                       outTex);
+  return m_textureUploader.uploadRGBA8(staticRecorder, img.pixels.data(),
+                                       img.width, img.height, outTex);
 }
 
 uint32_t
-MaterialSystem::createMaterialFromTexture(TextureHandle textureHandle) {
+MaterialSystem::createMaterialFromTexture(VkUploadContext::Recorder recorder,
+                                          TextureHandle textureHandle) {
   if (textureHandle.id >= m_textures.size() ||
       !m_textures[textureHandle.id].valid()) {
     std::cerr << "[MaterialSystem] Invalid texture handle\n";
@@ -165,7 +162,7 @@ MaterialSystem::createMaterialFromTexture(TextureHandle textureHandle) {
 
   MaterialGPU gpu;
 
-  if (!writeMaterialGPU(id, gpu)) {
+  if (!writeMaterialGPU(recorder, id, gpu)) {
     std::cerr << "[MaterialSystem] Failed to write material GPU table\n";
     return UINT32_MAX;
   }
@@ -173,8 +170,8 @@ MaterialSystem::createMaterialFromTexture(TextureHandle textureHandle) {
   return id;
 }
 
-uint32_t
-MaterialSystem::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
+uint32_t MaterialSystem::createMaterialFromBaseColorFactor(
+    VkUploadContext::Recorder recorder, const glm::vec4 &factor) {
   if (m_whiteTexture.id == UINT32_MAX ||
       m_whiteTexture.id >= m_textures.size() ||
       !m_textures[m_whiteTexture.id].valid()) {
@@ -191,7 +188,7 @@ MaterialSystem::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
   MaterialGPU gpu{};
   gpu.baseColorFactor = factor;
 
-  if (!writeMaterialGPU(id, gpu)) {
+  if (!writeMaterialGPU(recorder, id, gpu)) {
     std::cerr << "[MaterialSystem] Failed to write material GPU table\n";
     return UINT32_MAX;
   }
@@ -228,7 +225,8 @@ void MaterialSystem::bindMaterialTable(VkBuffer materialTableBuffer,
   m_materialTableCapacity = maxMaterialsInTable;
 }
 
-bool MaterialSystem::writeMaterialGPU(uint32_t materialId,
+bool MaterialSystem::writeMaterialGPU(VkUploadContext::Recorder recorder,
+                                      uint32_t materialId,
                                       const MaterialGPU &gpu) {
   if (m_materialTable == VK_NULL_HANDLE) {
     std::cerr << "[MaterialSystem] Material table not bound\n";
@@ -241,10 +239,12 @@ bool MaterialSystem::writeMaterialGPU(uint32_t materialId,
   }
 
   const VkDeviceSize dstOffset = VkDeviceSize(materialId) * sizeof(MaterialGPU);
-  return m_materialUploader.uploadOne(m_materialTable, dstOffset, gpu);
+  return m_materialUploader.uploadOne(recorder, m_materialTable, dstOffset,
+                                      gpu);
 }
 
-bool MaterialSystem::updateMaterialGPU(uint32_t materialId,
+bool MaterialSystem::updateMaterialGPU(VkUploadContext::Recorder recorder,
+                                       uint32_t materialId,
                                        const MaterialGPU &gpu) {
-  return writeMaterialGPU(materialId, gpu);
+  return writeMaterialGPU(recorder, materialId, gpu);
 }

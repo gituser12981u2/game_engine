@@ -25,7 +25,9 @@ public:
 
     m_ctx = std::exchange(other.m_ctx, nullptr);
     m_pool = std::exchange(other.m_pool, VK_NULL_HANDLE);
-    m_buffers = std::exchange(other.m_buffers, std::vector<VkCommandBuffer>{});
+    m_buffers = std::move(other.m_buffers);
+    other.m_buffers.clear();
+
     return *this;
   }
 

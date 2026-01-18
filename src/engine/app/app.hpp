@@ -2,7 +2,9 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/geometry/mesh_factory.hpp"
+#include "engine/jobs/job_system.hpp"
 #include "platform/window/glfw_window.hpp"
 #include "render/renderer.hpp"
 
@@ -51,11 +53,16 @@ public:
 
 private:
   GlfwWindow m_window;
+  JobSystem m_jobs;
   VkBackendCtx m_ctx;
   VkPresenter m_presenter;
   Renderer m_renderer;
 
   MeshFactory m_meshes{m_renderer};
+
+#if defined(ENABLE_TELEMETRY)
+  profiling::Telemetry m_profTelemetry;
+#endif
 
   AppConfig m_cfg{};
   bool m_inited = false;

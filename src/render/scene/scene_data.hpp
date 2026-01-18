@@ -13,8 +13,6 @@
 #include <span>
 #include <vulkan/vulkan_core.h>
 
-class UploadProfiler;
-
 class SceneData {
 public:
   SceneData() = default;
@@ -29,18 +27,17 @@ public:
   bool init(VkBackendCtx &ctx, uint32_t framesInFlight,
             const VkShaderInterface &interface,
             uint32_t requestedMaxInstancesPerFrame,
-            uint32_t requestedMaxMaterials, UploadProfiler *profiler);
+            uint32_t requestedMaxMaterials);
   void shutdown() noexcept;
 
   bool update(uint32_t frameIndex, const CameraUBO &camera);
   void bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
             uint32_t frameIndex) const;
 
-  InstanceUploadResult uploadInstances(uint32_t frameIndex,
+  InstanceUploadResult uploadInstances(VkUploadContext::Recorder recorder,
+                                       uint32_t frameIndex,
                                        uint32_t &cursorInstances,
                                        std::span<const glm::mat4> models);
-
-  bool rebindUpload(VkUploadContext &upload, UploadProfiler *profiler);
 
   [[nodiscard]] VkBuffer materialBuffer() const noexcept {
     return m_materialBuf.handle();
@@ -83,8 +80,6 @@ private:
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
   VkInstanceUploader m_instanceUploader;
-
-  UploadProfiler *m_profiler = nullptr; // non-owning
 
   VkSceneSets m_sets; // set 0 bindings
   bool m_initiailized = false;

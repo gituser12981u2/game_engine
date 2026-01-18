@@ -1,4 +1,4 @@
-#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
 

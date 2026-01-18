@@ -1,9 +1,10 @@
 #include "vk_texture_uploader.hpp"
 
+#include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/textures/vk_texture.hpp"
 #include "backend/gpu/textures/vk_texture_utils.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,35 +13,20 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
-// TODO take in backend ctx
-bool VkTextureUploader::init(VmaAllocator allocator, VkDevice device,
-                             VkUploadContext *upload,
-                             UploadProfiler *profiler) {
-  if (allocator == nullptr || device == VK_NULL_HANDLE ||
-      upload == VK_NULL_HANDLE) {
-    std::cerr << "[TextureUpload] Invalid init args\n";
-    return false;
-  }
-
-  m_allocator = allocator;
-  m_device = device;
-  m_upload = upload;
-  m_profiler = profiler;
+bool VkTextureUploader::init(VkBackendCtx &ctx) {
+  m_ctx = &ctx;
 
   return true;
 }
 
-void VkTextureUploader::shutdown() noexcept {
-  m_allocator = nullptr;
-  m_device = VK_NULL_HANDLE;
-  m_upload = nullptr;
-  m_profiler = nullptr;
-}
+void VkTextureUploader::shutdown() noexcept { m_ctx = nullptr; }
 
-bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
-                                    uint32_t height, VkTexture2D &out) {
-  if (m_allocator == nullptr || m_upload == nullptr) {
-    std::cerr << "[TextureUpload] Not initialized\n";
+bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
+                                    const void *rgbaPixels, uint32_t width,
+                                    uint32_t height, VkTexture2D &out,
+                                    VkPipelineStageFlags finalStage) {
+  if (!recorder) {
+    std::cerr << "[TextureUpload] Invalid recorder\n";
     return false;
   }
 
@@ -49,10 +35,11 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
     return false;
   }
 
-  const VkDeviceSize size = static_cast<VkDeviceSize>(width) *
-                            static_cast<VkDeviceSize>(height) * 4ULL;
+  VkDevice device = m_ctx->device();
 
-  VkStagingAlloc stageAlloc = m_upload->allocStaging(size, /*alignment=*/16);
+  const VkDeviceSize size = VkDeviceSize(width) * VkDeviceSize(height) * 4ULL;
+
+  VkStagingAlloc stageAlloc = recorder.allocStaging(size, /*alignment=*/16);
   if (!stageAlloc) {
     std::cerr
         << "[TextureUpload] Out of staging space (increase per-frame budget "
@@ -62,45 +49,38 @@ bool VkTextureUploader::uploadRGBA8(const void *rgbaPixels, uint32_t width,
 
   std::memcpy(stageAlloc.ptr, rgbaPixels, static_cast<size_t>(size));
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::UploadMemcpyBytes, size);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::UploadMemcpyCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::UploadMemcpyBytes, size);
 
   out.shutdown();
 
   // TODO: check for VK_FORMAT_R8G8B8A8_UNORM
-  // TODO: move to images/
-  if (!out.image.init2D(m_allocator, width, height, VK_FORMAT_R8G8B8A8_SRGB,
-                        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                            VK_IMAGE_USAGE_SAMPLED_BIT,
-                        VK_IMAGE_TILING_OPTIMAL)) {
+  if (!out.image.init2D(
+          m_ctx->allocator(), width, height, VK_FORMAT_R8G8B8A8_SRGB,
+          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+          VK_IMAGE_TILING_OPTIMAL)) {
     std::cerr << "[TextureUpload] Failed to create device-local image\n";
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::TextureAllocatedBytes, size);
-  }
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::TextureAllocatedBytes, size);
 
-  m_upload->cmdUploadRGBA8ToImage(out.image.handle(), width, height,
-                                  stageAlloc.offset,
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  recorder.cmdUploadRGBA8ToImage(
+      out.image.handle(), width, height, stageAlloc.offset,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, finalStage);
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::TextureUploadCount, 1);
-    profilerAdd(m_profiler, UploadProfiler::Stat::TextureUploadBytes, size);
-  }
+  PROFILE_UPLOAD_INC(UploadProfiler::Stat::TextureUploadCount);
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::TextureUploadBytes, size);
 
-  out.device = m_device;
+  out.device = device;
 
-  if (!vkCreateTextureView(m_device, out.image.handle(),
-                           VK_FORMAT_R8G8B8A8_SRGB, out.view)) {
+  if (!vkCreateTextureView(device, out.image.handle(), VK_FORMAT_R8G8B8A8_SRGB,
+                           out.view)) {
     out.shutdown();
     return false;
   }
 
-  if (!vkCreateTextureSampler(m_device, out.sampler)) {
+  if (!vkCreateTextureSampler(device, out.sampler)) {
     out.shutdown();
     return false;
   }

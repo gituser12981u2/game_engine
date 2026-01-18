@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/images/vk_image.hpp"
 
 #include <utility>
@@ -22,8 +23,7 @@ public:
 
     shutdown();
 
-    m_allocator = std::exchange(other.m_allocator, nullptr);
-    m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
+    m_ctx = std::exchange(other.m_ctx, nullptr);
     m_image = std::move(other.m_image);
     m_view = std::exchange(other.m_view, VK_NULL_HANDLE);
     m_format = std::exchange(other.m_format, VK_FORMAT_UNDEFINED);
@@ -32,8 +32,7 @@ public:
     return *this;
   }
 
-  bool init(VmaAllocator allocator, VkPhysicalDevice physicalDevice,
-            VkDevice device, VkExtent2D extent);
+  bool init(VkBackendCtx &ctx, VkExtent2D extent);
   void shutdown() noexcept;
 
   [[nodiscard]] VkImage image() const noexcept { return m_image.handle(); }
@@ -46,8 +45,7 @@ private:
   static bool findSupportedDepthFormat(VkPhysicalDevice physicalDevice,
                                        VkFormat &out);
 
-  VmaAllocator m_allocator = nullptr;  // non-owning
-  VkDevice m_device = VK_NULL_HANDLE;  // non-owning
+  VkBackendCtx *m_ctx = nullptr;       // non-owning
   VkImageObj m_image;                  // owning
   VkImageView m_view = VK_NULL_HANDLE; // owning
   VkFormat m_format = VK_FORMAT_UNDEFINED;

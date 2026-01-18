@@ -1,10 +1,11 @@
 #include "vk_frame_manager.hpp"
 
-#include "backend/profiling/cpu_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstdint>
 #include <ctime>
-#include <iostream>
+#include <fmt/format.h>
 #include <vulkan/vulkan_core.h>
 
 constexpr uint32_t kOneFence = 1;
@@ -12,17 +13,11 @@ constexpr VkBool32 kWaitAll = VK_TRUE;
 
 bool VkFrameManager::init(VkDevice device, uint32_t framesInFlight,
                           uint32_t swapchainImageCount) {
-  if (device == VK_NULL_HANDLE) {
-    std::cerr << "[Frame] Device is null\n";
-    return false;
-  }
-
   if (framesInFlight == 0 || swapchainImageCount == 0) {
-    std::cerr << "[Frame] Invalid counts\n";
+    LOGE("Invalid counts");
     return false;
   }
 
-  // Re-init
   shutdown();
 
   m_device = device;
@@ -56,13 +51,13 @@ bool VkFrameManager::createSyncObjects() {
   for (uint32_t i = 0; i < m_framesInFlight; ++i) {
     if (vkCreateSemaphore(m_device, &semInfo, nullptr, &m_imageAvailable[i]) !=
         VK_SUCCESS) {
-      std::cerr << "[Frame] Failed to create imageAvailable semaphore\n";
+      LOGE("imageAvailable semaphore creation failed");
       return false;
     }
 
     if (vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) !=
         VK_SUCCESS) {
-      std::cerr << "[Frame] Failed to create inFlight fence\n";
+      LOGE("inFlight fence creation failed");
       return false;
     }
   }
@@ -70,7 +65,7 @@ bool VkFrameManager::createSyncObjects() {
   for (uint32_t i = 0; i < m_swapchainImageCount; ++i) {
     if (vkCreateSemaphore(m_device, &semInfo, nullptr, &m_renderFinished[i]) !=
         VK_SUCCESS) {
-      std::cerr << "[Frame] Failed to create renderFinished semaphore\n";
+      LOGE("renderFinished semaphore creation failed");
       return false;
     }
   }
@@ -89,18 +84,21 @@ void VkFrameManager::destroySyncObjects() noexcept {
 
   for (VkSemaphore s : m_imageAvailable) {
     if (s != VK_NULL_HANDLE) {
+      LOGD("Destroying sempahore");
       vkDestroySemaphore(m_device, s, nullptr);
     }
   }
 
   for (VkSemaphore s : m_renderFinished) {
     if (s != VK_NULL_HANDLE) {
+      LOGD("Destroying sempahore");
       vkDestroySemaphore(m_device, s, nullptr);
     }
   }
 
   for (VkFence f : m_inFlightFences) {
     if (f != VK_NULL_HANDLE) {
+      LOGD("Destroying sempahore");
       vkDestroyFence(m_device, f, nullptr);
     }
   }
@@ -113,8 +111,7 @@ void VkFrameManager::destroySyncObjects() noexcept {
 
 VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
                                                        uint32_t &outImageIndex,
-                                                       uint64_t timeout,
-                                                       CpuProfiler *profiler) {
+                                                       uint64_t timeout) {
   if (m_device == VK_NULL_HANDLE) {
     return FrameStatus::Error;
   }
@@ -127,54 +124,47 @@ VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
 
   // Wait for CPU-frame fence
   VkResult waitRes = VK_SUCCESS;
-  if (profiler != nullptr) {
-    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::WaitForFence);
-    waitRes =
-        vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
-  } else {
+  {
+    PROFILE_CPU_SCOPE(CpuProfiler::Stat::WaitForFence);
     waitRes =
         vkWaitForFences(m_device, kOneFence, &frameFence, kWaitAll, timeout);
   }
+
   if (waitRes != VK_SUCCESS) {
-    std::cerr << "[Frame] vkWaitForFences failed: " << waitRes << "\n";
+    LOGE("vkWaitForFences failed: {}", fmt::underlying(waitRes));
     return FrameStatus::Error;
   }
 
   VkResult acq = VK_SUCCESS;
-  if (profiler != nullptr) {
-    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::Acquire);
-    acq = vkAcquireNextImageKHR(m_device, swapchain, timeout,
-                                m_imageAvailable[m_currentFrame],
-                                VK_NULL_HANDLE, &outImageIndex);
-  } else {
+  {
+    PROFILE_CPU_SCOPE(CpuProfiler::Stat::Acquire);
     acq = vkAcquireNextImageKHR(m_device, swapchain, timeout,
                                 m_imageAvailable[m_currentFrame],
                                 VK_NULL_HANDLE, &outImageIndex);
   }
+
   if (acq == VK_ERROR_OUT_OF_DATE_KHR) {
-    std::cerr << "[Frame] vkAcquireNextImageKHR returned OUT_OF_DATE\n";
+    LOGE("vkAcquireNextImageKHR returned OUT_OF_DATE");
     return FrameStatus::OutOfDate;
   }
 
   if (acq == VK_SUBOPTIMAL_KHR) {
     // TODO: signal recreate swapchain when convienent
   } else if (acq != VK_SUCCESS) {
-    std::cerr << "[Frame] vkAcquireNextImageKHR failed: " << acq << "\n";
+    LOGE("vkAcquireNextImageKHR failed: {}", fmt::underlying(acq));
     return FrameStatus::Error;
   }
 
   if (outImageIndex >= m_imagesInFlight.size()) {
-    std::cerr << "[Frame] imageIndex out of range\n";
+    LOGE("imageIndex out of range");
     return FrameStatus::Error;
   }
 
   if (m_imagesInFlight[outImageIndex] != VK_NULL_HANDLE) {
     VkFence imgFence = m_imagesInFlight[outImageIndex];
 
-    if (profiler != nullptr) {
-      CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::WaitForFence);
-      vkWaitForFences(m_device, kOneFence, &imgFence, kWaitAll, timeout);
-    } else {
+    {
+      PROFILE_CPU_SCOPE(CpuProfiler::Stat::WaitForFence);
       vkWaitForFences(m_device, kOneFence, &imgFence, kWaitAll, timeout);
     }
   }
@@ -187,15 +177,7 @@ VkFrameManager::FrameStatus VkFrameManager::beginFrame(VkSwapchainKHR swapchain,
 
 VkFrameManager::FrameStatus
 VkFrameManager::submit(VkQueue queue, uint32_t imageIndex, VkCommandBuffer cmd,
-                       VkPipelineStageFlags waitStage, CpuProfiler *profiler) {
-  // if (m_device == VK_NULL_HANDLE) {
-  //   return FrameStatus::Error;
-  // }
-  //
-  // if (queue == VK_NULL_HANDLE) {
-  //   return FrameStatus::Error;
-  // }
-
+                       VkPipelineStageFlags waitStage) {
   if (imageIndex >= m_renderFinished.size()) {
     return FrameStatus::Error;
   }
@@ -215,15 +197,13 @@ VkFrameManager::submit(VkQueue queue, uint32_t imageIndex, VkCommandBuffer cmd,
   submit.pSignalSemaphores = &signalSem;
 
   VkResult res = VK_SUCCESS;
-  if (profiler != nullptr) {
-    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueueSubmit);
-    res = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
-  } else {
+  {
+    PROFILE_CPU_SCOPE(CpuProfiler::Stat::QueueSubmit);
     res = vkQueueSubmit(queue, kOneFence, &submit, frameFence);
   }
 
   if (res != VK_SUCCESS) {
-    std::cerr << "[Frame] vkQueueSubmit failed: " << res << "\n";
+    LOGE("vkQueueSubmit failed: {}", fmt::underlying(res));
     return FrameStatus::Error;
   }
 
@@ -232,8 +212,7 @@ VkFrameManager::submit(VkQueue queue, uint32_t imageIndex, VkCommandBuffer cmd,
 
 VkFrameManager::FrameStatus VkFrameManager::present(VkQueue queue,
                                                     VkSwapchainKHR swapchain,
-                                                    uint32_t imageIndex,
-                                                    CpuProfiler *profiler) {
+                                                    uint32_t imageIndex) {
   if (imageIndex >= m_renderFinished.size()) {
     return FrameStatus::Error;
   }
@@ -249,16 +228,13 @@ VkFrameManager::FrameStatus VkFrameManager::present(VkQueue queue,
   present.pImageIndices = &imageIndex;
 
   VkResult res = VK_SUCCESS;
-  if (profiler != nullptr) {
-    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueuePresent);
-    res = vkQueuePresentKHR(queue, &present);
-  } else {
-    CpuProfiler::Scope s(*profiler, CpuProfiler::Stat::QueuePresent);
+  {
+    PROFILE_CPU_SCOPE(CpuProfiler::Stat::QueuePresent);
     res = vkQueuePresentKHR(queue, &present);
   }
 
   if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-    std::cerr << "[Frame] vkQueuePresentKHR returned OUT_OF_DATE\n";
+    LOGE("vkQueuePresentKHR returned OUT_OF_DATE");
     return FrameStatus::OutOfDate;
   }
 
@@ -266,7 +242,7 @@ VkFrameManager::FrameStatus VkFrameManager::present(VkQueue queue,
 
   if (res == VK_SUBOPTIMAL_KHR) {
     if (!suboptimal_logged) {
-      std::cerr << "[Frame] vkQueuePresentKHR returned SUBOPTIMAL\n";
+      LOGE("vkQueuePresentKHR returned SUBOPTIMAL");
       suboptimal_logged = true;
     }
 
@@ -275,7 +251,7 @@ VkFrameManager::FrameStatus VkFrameManager::present(VkQueue queue,
   }
 
   if (res != VK_SUCCESS) {
-    std::cerr << "[Frame] vkQueuePresentKHR failed: " << res << "\n";
+    LOGE("vkQueuePresentKHR failed: {}", fmt::underlying(res));
     return FrameStatus::Error;
   }
 
@@ -305,7 +281,7 @@ bool VkFrameManager::onSwapchainRecreated(uint32_t newSwapchainImageCount) {
   for (uint32_t i = 0; i < m_swapchainImageCount; ++i) {
     if (vkCreateSemaphore(m_device, &semInfo, nullptr, &m_renderFinished[i]) !=
         VK_SUCCESS) {
-      std::cerr << "[Frame] Failed to recreate renderFinished semaphore\n";
+      LOGE("renderFinished semaphore recreated failed");
       return false;
     }
   }

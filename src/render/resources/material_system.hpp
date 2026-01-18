@@ -13,25 +13,26 @@
 #include <glm/ext/vector_float4.hpp>
 #include <vulkan/vulkan_core.h>
 
-class UploadProfiler;
-
 struct TextureHandle {
   uint32_t id = UINT32_MAX;
 };
 
 class MaterialSystem {
 public:
-  bool init(VkBackendCtx &ctx, VkUploadContext &upload,
-            VkDescriptorSetLayout materialSetLayout, uint32_t materialCapacity,
-            UploadProfiler *profiler = nullptr);
+  bool init(VkBackendCtx &ctx, VkDescriptorSetLayout materialSetLayout,
+            uint32_t materialCapacity);
   void shutdown() noexcept;
 
-  TextureHandle createTextureFromFile(const std::string &path, bool flipY);
-  bool createTextureFromImage(const engine::ImageData &img,
+  TextureHandle createTextureFromFile(VkUploadContext::Recorder staticRec,
+                                      const std::string &path, bool flipY);
+  bool createTextureFromImage(VkUploadContext::Recorder staticRec,
+                              const engine::ImageData &img,
                               VkTexture2D &outTex);
 
-  uint32_t createMaterialFromTexture(TextureHandle textureHandle);
-  uint32_t createMaterialFromBaseColorFactor(const glm::vec4 &factor);
+  uint32_t createMaterialFromTexture(VkUploadContext::Recorder recorder,
+                                     TextureHandle textureHandle);
+  uint32_t createMaterialFromBaseColorFactor(VkUploadContext::Recorder recorder,
+                                             const glm::vec4 &factor);
 
   void setActiveMaterial(uint32_t materialIndex);
   [[nodiscard]] uint32_t setActiveMaterial() const { return m_activeMaterial; }
@@ -42,22 +43,16 @@ public:
   void bindMaterialTable(VkBuffer materialTableBuffer,
                          uint32_t maxMaterialsInTable) noexcept;
 
-  bool updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu);
+  bool updateMaterialGPU(VkUploadContext::Recorder recorder,
+                         uint32_t materialId, const MaterialGPU &gpu);
 
-  bool createDefaultMaterial() noexcept;
+  bool createDefaultMaterial(VkUploadContext::Recorder staticRec) noexcept;
 
   [[nodiscard]] uint32_t resolveMaterial(uint32_t overrideMaterial) const;
 
-  bool rebind(VkBackendCtx &ctx, VkUploadContext &upload) {
-    const bool okTex = m_textureUploader.init(ctx.allocator(), ctx.device(),
-                                              &upload, m_uploaderProfiler);
-    const bool okMat = m_materialUploader.init(&upload, m_uploaderProfiler);
-
-    return okTex && okMat;
-  }
-
 private:
-  bool writeMaterialGPU(uint32_t materialId, const MaterialGPU &gpu);
+  bool writeMaterialGPU(VkUploadContext::Recorder recorder, uint32_t materialId,
+                        const MaterialGPU &gpu);
 
   VkTextureUploader m_textureUploader;
   VkMaterialUploader m_materialUploader;
@@ -72,6 +67,4 @@ private:
   TextureHandle m_whiteTexture{UINT32_MAX};
 
   uint32_t m_activeMaterial = UINT32_MAX;
-
-  UploadProfiler *m_uploaderProfiler = nullptr; // non-owning
 };

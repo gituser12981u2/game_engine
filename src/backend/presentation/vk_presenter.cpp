@@ -1,21 +1,21 @@
 #include "vk_presenter.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "engine/logging/log.hpp"
 #include "platform/window/glfw_window.hpp"
 
 #include <cstdint>
-#include <iostream>
 #include <vulkan/vulkan_core.h>
 
 bool VkPresenter::init(VkBackendCtx &ctx, GlfwWindow *window, uint32_t width,
                        uint32_t height) {
   if (window == nullptr) {
-    std::cerr << "[Presenter] window is null\n";
+    LOGE("Window is null");
     return false;
   }
 
   if (width == 0 || height == 0) {
-    std::cerr << "[Presenter] window width and height are 0";
+    LOGE("Window width and height are 0");
     return false;
   }
 
@@ -25,19 +25,19 @@ bool VkPresenter::init(VkBackendCtx &ctx, GlfwWindow *window, uint32_t width,
   m_window = window;
 
   if (!m_window->createVulkanSurface(m_ctx->instance(), m_surface)) {
-    std::cerr << "[Presenter] create surface failed\n";
+    LOGE("Surface creation failed");
     shutdown();
     return false;
   }
 
   if (!m_swapchain.init(*m_ctx, m_surface, width, height)) {
-    std::cerr << "[Presenter] swapchain init failed\n";
+    LOGE("Swapchain initialization failed");
     shutdown();
     return false;
   }
 
   if (!m_swapchain.createSwapchainImageViews(m_ctx->device())) {
-    std::cerr << "[Presenter] swapchain image views creation failed\n";
+    LOGE("Swapchain image views creation failed");
     shutdown();
     return false;
   }
@@ -60,6 +60,7 @@ void VkPresenter::shutdown() noexcept {
   }
 
   if (instance != VK_NULL_HANDLE && m_surface != VK_NULL_HANDLE) {
+    LOGD("Destroying surface");
     vkDestroySurfaceKHR(instance, m_surface, nullptr);
   }
 

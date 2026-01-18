@@ -1,8 +1,8 @@
-#include "backend/profiling/profiling_logger.hpp"
+#include "backend/profiling/logging/profiling_logger.hpp"
 
-#include "backend/profiling/cpu_profiler.hpp"
-#include "backend/profiling/upload_profiler.hpp"
-#include "backend/profiling/vk_gpu_profiler.hpp"
+#include "backend/profiling/profilers/cpu_profiler.hpp"
+#include "backend/profiling/profilers/upload_profiler.hpp"
+#include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -48,7 +48,7 @@ bool FrameLogger::shouldLog() noexcept {
   return (m_frameCounter % m_period) == 0ULL;
 }
 
-static inline double msAt(const CpuProfiler::FrameStats &st,
+static inline double msAt(const CpuProfiler::Frame &st,
                           CpuProfiler::Stat stat) noexcept {
   return st.ms[static_cast<size_t>(stat)];
 }
@@ -237,9 +237,8 @@ static void logUpload(const UploadProfiler &upload) noexcept {
   std::cerr << line.data() << "\n";
 }
 
-void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
-                              const UploadProfiler &upload) noexcept {
-
+void FrameLogger::logPerFrame(const CpuProfiler *cpu, const VkGpuProfiler &gpu,
+                              const UploadProfiler *upload) noexcept {
   if (!shouldLog()) {
     return;
   }
@@ -256,9 +255,9 @@ void FrameLogger::logPerFrame(const CpuProfiler &cpu, const VkGpuProfiler &gpu,
   // call submit immediate so I would have to pass profiler a lot. But it
   // doesn't matter since eventually submit Immediate will be removed and
   // we won't have blocking anymore
-  logCpu(cpu);
+  logCpu(*cpu);
 
-  logUpload(upload);
+  logUpload(*upload);
   logGpu(gpu);
 
   std::cout << "\n";

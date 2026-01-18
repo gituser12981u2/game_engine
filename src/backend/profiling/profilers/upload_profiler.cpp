@@ -1,8 +1,8 @@
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/profilers/upload_profiler.hpp"
 
 #include <cstddef>
 
-static constexpr bool isLifetimeStat(UploadProfiler::Stat stat) noexcept {
+bool UploadProfiler::isLifetimeStat(Stat stat) noexcept {
   using S = UploadProfiler::Stat;
   switch (stat) {
   case S::BufferAllocatedBytes:
@@ -17,16 +17,16 @@ static constexpr bool isLifetimeStat(UploadProfiler::Stat stat) noexcept {
   }
 }
 
-void UploadProfiler::beginFrame() noexcept { resetFrame(); }
+void UploadProfiler::beginInterval() noexcept { resetCur(); }
 
-void UploadProfiler::endFrame() noexcept {
-  m_lastFrame = m_frame;
-  resetFrame();
+void UploadProfiler::endInterval() noexcept {
+  m_lastFrame = m_cur;
+  resetCur();
 }
 
 void UploadProfiler::add(Stat stat, std::uint64_t value) noexcept {
   const size_t i = static_cast<size_t>(stat);
-  m_frame.v[i] += value;
+  m_cur.v[i] += value;
 
   if (isLifetimeStat(stat)) {
     m_lifetime.v[i] += value;

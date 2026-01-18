@@ -17,7 +17,6 @@ target_link_libraries(quark_render_scene
         quark::backend::gpu::buffers
         quark::backend::gpu::descriptors
         quark::backend::gpu::upload
-        quark::backend::profiling
 
         quark::engine::camera
     PRIVATE

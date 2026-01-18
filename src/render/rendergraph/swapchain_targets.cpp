@@ -1,9 +1,9 @@
 #include "render/rendergraph/swapchain_targets.hpp"
 
 #include "backend/presentation/vk_presenter.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstdint>
-#include <iostream>
 #include <vulkan/vulkan_core.h>
 
 bool SwapchainTargets::init(VkBackendCtx &ctx, VkPresenter &presenter) {
@@ -11,12 +11,12 @@ bool SwapchainTargets::init(VkBackendCtx &ctx, VkPresenter &presenter) {
 
   const uint32_t imageCount = presenter.imageCount();
   if (imageCount == 0) {
-    std::cerr << "[SwapchainTargets] presenter.imageCount() == 0\n";
+    LOGE("presenter.imageCount() == 0");
     return false;
   }
 
   if (!rebuildDepth(ctx, presenter.swapchainExtent(), imageCount)) {
-    std::cerr << "[SwapchainTargets] Failed to create depth images\n";
+    LOGE("Depth images creation failed");
     shutdown();
     return false;
   }
@@ -47,7 +47,7 @@ bool SwapchainTargets::recreateIfNeeded(VkBackendCtx &ctx,
   const VkExtent2D newExtent = presenter.swapchainExtent();
   const uint32_t newImageCount = presenter.imageCount();
   if (newImageCount == 0) {
-    std::cerr << "[SwapchainTargets] presenter.imageCount() == 0\n";
+    LOGE("presenter.imageCount() == 0");
     return false;
   }
 
@@ -75,10 +75,8 @@ bool SwapchainTargets::rebuildDepth(VkBackendCtx &ctx, VkExtent2D extent,
   m_depthViews.resize(imageCount);
 
   for (uint32_t i = 0; i < imageCount; ++i) {
-    if (!m_depthImages[i].init(ctx.allocator(), ctx.physicalDevice(),
-                               ctx.device(), extent)) {
-      std::cerr << "[SwapchainTargets] depth init failed at index " << i
-                << "\n";
+    if (!m_depthImages[i].init(ctx, extent)) {
+      LOGE("Depth initialization failed at index {}", i);
 
       // partial cleanup
       for (auto &depth : m_depthImages) {

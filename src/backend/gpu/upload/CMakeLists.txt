@@ -19,7 +19,6 @@ target_link_libraries(quark_backend_gpu_upload
 
       quark::backend::core
       quark::backend::frame
-      quark::backend::profiling
       quark::backend::gpu::buffers
       quark::backend::gpu::textures
 )

@@ -3,7 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
-#include "backend/profiling/upload_profiler.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/camera/camera_ubo.hpp"
 #include "render/resources/material_gpu.hpp"
 
@@ -16,10 +16,8 @@
 bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
                      const VkShaderInterface &interface,
                      uint32_t requestedMaxInstancesPerFrame,
-                     uint32_t requestedMaxMaterials, UploadProfiler *profiler) {
+                     uint32_t requestedMaxMaterials) {
   shutdown();
-
-  m_profiler = profiler;
 
   if (framesInFlight == 0) {
     std::cerr << "[SceneData] framesInFlight must be greater than 0\n";
@@ -61,6 +59,8 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     shutdown();
     return false;
   }
+
+  (void)m_instanceUploader.init();
 
   m_initiailized = true;
   return true;
@@ -123,10 +123,8 @@ bool SceneData::initInstanceBuffer(VmaAllocator allocator,
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::InstanceAllocatedBytes,
-                static_cast<std::uint64_t>(totalBytes));
-  }
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::InstanceAllocatedBytes,
+                     static_cast<uint64_t>(totalBytes));
 
   return true;
 }
@@ -158,10 +156,8 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
     return false;
   }
 
-  if (m_profiler != nullptr) {
-    profilerAdd(m_profiler, UploadProfiler::Stat::MaterialAllocatedBytes,
-                static_cast<std::uint64_t>(m_materialTableBytes));
-  }
+  PROFILE_UPLOAD_ADD(UploadProfiler::Stat::MaterialAllocatedBytes,
+                     static_cast<uint64_t>(m_materialTableBytes));
 
   return true;
 }
@@ -178,6 +174,7 @@ bool SceneData::initDescriptorSets(VkDevice device,
 }
 
 void SceneData::shutdown() noexcept {
+
   m_instanceUploader.shutdown();
   m_sets.shutdown();
   m_materialBuf.shutdown();
@@ -187,8 +184,6 @@ void SceneData::shutdown() noexcept {
   m_instanceFrameStride = 0;
   m_maxInstancesPerFrame = 0;
   m_materialTableBytes = 0;
-
-  m_profiler = nullptr;
 
   m_initiailized = false;
 }
@@ -216,18 +211,14 @@ void SceneData::bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
   m_sets.bind(cmd, interface.pipelineLayout(), 0, frameIndex);
 }
 
-bool SceneData::rebindUpload(VkUploadContext &upload,
-                             UploadProfiler *profiler) {
-  return m_instanceUploader.init(&upload, profiler);
-}
-
 InstanceUploadResult
-SceneData::uploadInstances(uint32_t frameIndex, uint32_t &cursorInstances,
+SceneData::uploadInstances(VkUploadContext::Recorder recorder,
+                           uint32_t frameIndex, uint32_t &cursorInstances,
                            std::span<const glm::mat4> models) {
   const VkDeviceSize frameBase =
       VkDeviceSize(frameIndex) * m_instanceFrameStride;
 
   return m_instanceUploader.uploadMat4Instances(
-      m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
+      recorder, m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
       m_maxInstancesPerFrame, cursorInstances, models);
 }

@@ -1,5 +1,7 @@
 #include "app.hpp"
 
+#include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/jobs/job_system.hpp"
 #include "engine/logging/log.hpp"
 
 #include <GLFW/glfw3.h>
@@ -10,6 +12,12 @@
 bool EngineApp::init(const AppConfig &cfg) {
   shutdown();
 
+#if defined(ENABLE_TELEMETRY)
+  profiling::setTlsTelemetry(&m_profTelemetry);
+#else
+  profiling::setTlsTelemetry(nullptr);
+#endif
+
   m_cfg = cfg;
 
   if (!m_window.init(cfg.width, cfg.height, cfg.title)) {
@@ -17,7 +25,10 @@ bool EngineApp::init(const AppConfig &cfg) {
     return false;
   }
 
-  LOG_INFO("App initialized");
+  if (!m_jobs.init()) {
+    std::cerr << "[App] Failed to initialize the job system\n";
+    return false;
+  }
 
   const auto platformExtensions = m_window.requiredVulkanExtensions();
   if (platformExtensions.empty()) {
@@ -42,13 +53,15 @@ bool EngineApp::init(const AppConfig &cfg) {
   }
 
   if (!m_renderer.init(m_ctx, m_presenter, cfg.framesInFlight, cfg.vertSpvPath,
-                       cfg.fragSpvPath)) {
+                       cfg.fragSpvPath, m_jobs)) {
     std::cerr << "[App] Renderer init failed\n";
     shutdown();
     return false;
   }
 
   m_inited = true;
+  LOGI("App initialized");
+
   return true;
 }
 
@@ -60,9 +73,14 @@ void EngineApp::shutdown() noexcept {
   m_renderer.shutdown();
   m_presenter.shutdown();
   m_ctx.shutdown();
+  m_jobs.shutdown();
   m_window.shutdown();
 
   m_inited = false;
+
+#if defined(ENABLE_TELEMETRY)
+  profiling::setTlsTelemetry(nullptr);
+#endif
 }
 
 void EngineApp::run(const std::function<void(float dt)> &tick) {
