@@ -2,11 +2,13 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
+#include "backend/gpu/buffers/vk_per_frame_uniform_buffers.hpp"
 #include "backend/gpu/descriptors/vk_scene_sets.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
 #include "backend/gpu/upload/vk_instance_uploader.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "engine/camera/camera_ubo.hpp"
+#include "render/scene/debug_ubo.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -59,6 +61,8 @@ public:
     return m_maxInstancesPerFrame;
   }
 
+  void setDebug(const DebugUBO &debug) { m_debug = debug; }
+
 private:
   bool initCameraBuffers(VmaAllocator allocator, uint32_t framesInFlight);
   bool queryDeviceLimits(VkPhysicalDevice physicalDevice);
@@ -66,6 +70,7 @@ private:
                           uint32_t requestedMaxInstancesPerFrame);
   bool initMaterialBuffer(VmaAllocator allocator,
                           uint32_t requestedMaxMaterials);
+  bool initDebugBuffers(VmaAllocator allocator, uint32_t framesInFlight);
   bool initDescriptorSets(VkDevice device, const VkShaderInterface &interface);
 
   VkPerFrameUniformBuffers m_cameraBufs; // sizeof(CameraUBO) per frame
@@ -80,6 +85,9 @@ private:
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
   VkInstanceUploader m_instanceUploader;
+
+  VkPerFrameUniformBuffers m_debugBufs;
+  DebugUBO m_debug = {};
 
   VkSceneSets m_sets; // set 0 bindings
   bool m_initiailized = false;

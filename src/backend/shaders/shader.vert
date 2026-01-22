@@ -6,7 +6,7 @@ layout(location = 2) in vec2 inUV;
 
 layout(location = 0) out vec3 vColor;
 layout(location = 1) out vec2 v_uv;
-layout(location = 2) out uint v_matId;
+layout(location = 2) flat out uint v_matId;
 
 layout(set = 0, binding = 0) uniform CameraUBO {
   mat4 view;

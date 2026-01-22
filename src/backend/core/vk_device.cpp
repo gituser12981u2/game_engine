@@ -264,18 +264,65 @@ bool VkDeviceCtx::createLogicalDevice() {
   queueCreateInfo.queueCount = 1;
   queueCreateInfo.pQueuePriorities = &queuePriority;
 
-  VkPhysicalDeviceFeatures deviceFeatures{};
+  VkPhysicalDeviceVulkan12Features supVk12{};
+  supVk12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
-  VkPhysicalDeviceDynamicRenderingFeatures dyn{};
-  dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
-  dyn.dynamicRendering = VK_TRUE;
+  VkPhysicalDeviceDynamicRenderingFeatures supDyn{};
+  supDyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+
+  VkPhysicalDeviceFeatures2 supFeats2{};
+  supFeats2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  supFeats2.pNext = &supVk12;
+  supVk12.pNext = &supDyn;
+
+  vkGetPhysicalDeviceFeatures2(m_physicalDevice, &supFeats2);
+
+  const bool hasNonUniform =
+      (supVk12.shaderSampledImageArrayNonUniformIndexing == VK_TRUE);
+
+  const bool hasPartiallyBound =
+      (supVk12.descriptorBindingPartiallyBound == VK_TRUE);
+
+  const bool hasSampledImageUAB =
+      (supVk12.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE);
+
+  const bool hasRuntimeArray = (supVk12.runtimeDescriptorArray == VK_TRUE);
+
+  if (!hasNonUniform || !hasPartiallyBound) {
+    LOGE("Bindless textures not supported on this device");
+    LOGE(" shaderSampledImageArrayNonUniformIndexing = {}",
+         hasNonUniform ? "YES" : "NO");
+    LOGE(" descriptorBindingPartiallyBound = {}",
+         hasPartiallyBound ? "YES" : "NO");
+    LOGE(" descriptorBindingSampledImageUpdateAfterBind = {}",
+         hasSampledImageUAB ? "YES" : "NO");
+    LOGE(" runtimeDescriptorArray = {}", hasRuntimeArray ? "YES" : "NO");
+    return false;
+  }
+
+  VkPhysicalDeviceVulkan12Features enVk12{};
+  enVk12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+  enVk12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+  enVk12.descriptorBindingPartiallyBound = VK_TRUE;
+  enVk12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+  enVk12.runtimeDescriptorArray = hasRuntimeArray ? VK_TRUE : VK_FALSE;
+
+  VkPhysicalDeviceDynamicRenderingFeatures enDyn{};
+  enDyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+  enDyn.dynamicRendering = VK_TRUE;
+
+  VkPhysicalDeviceFeatures2 enabledFeats2{};
+  enabledFeats2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  enabledFeats2.pNext = &enVk12;
+  enVk12.pNext = &enDyn;
+
+  enabledFeats2.features = VkPhysicalDeviceFeatures{};
 
   VkDeviceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  createInfo.pNext = &dyn;
+  createInfo.pNext = &enabledFeats2;
   createInfo.queueCreateInfoCount = 1;
   createInfo.pQueueCreateInfos = &queueCreateInfo;
-  createInfo.pEnabledFeatures = &deviceFeatures;
 
   createInfo.enabledExtensionCount =
       static_cast<uint32_t>(kDeviceExtensions.size());
@@ -292,6 +339,13 @@ bool VkDeviceCtx::createLogicalDevice() {
   vkGetDeviceQueue(m_device, indices.graphicsFamily.value(), 0,
                    &m_queues.graphics);
   m_queues.graphicsFamily = indices.graphicsFamily.value();
+
+  LOGI("Enabled bindless features:");
+  LOGI("  shaderSampledImageArrayNonUniformIndexing=YES");
+  LOGI("  descriptorBindingPartiallyBound=YES");
+  LOGI("  descriptorBindingSampledImageUpdateAfterBind=YES");
+  LOGI("  runtimeDescriptorArray={} (optional)",
+       hasRuntimeArray ? "YES" : "NO");
 
   return true;
 }

@@ -1,22 +1,25 @@
 #include "backend/gpu/descriptors/vk_scene_sets.hpp"
 
 #include "backend/gpu/buffers/vk_per_frame_uniform_buffers.hpp"
+#include "engine/logging/log.hpp"
 
 #include <array>
 #include <cstdint>
-#include <iostream>
+#include <fmt/format.h>
 #include <vulkan/vulkan_core.h>
 
 bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                       const VkPerFrameUniformBuffers &bufs,
+                       const VkPerFrameUniformBuffers &cameraBufs,
+                       const VkPerFrameUniformBuffers &debugBufs,
                        VkBuffer instanceBuffer,
                        VkDeviceSize instanceFrameStrideBytes,
                        VkBuffer materialBuffer,
                        VkDeviceSize materialTableBytes) {
-  if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE || !bufs.valid() ||
+  if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE ||
+      !cameraBufs.valid() || !debugBufs.valid() ||
       instanceBuffer == VK_NULL_HANDLE || instanceFrameStrideBytes == 0 ||
       materialBuffer == VK_NULL_HANDLE || materialTableBytes == 0) {
-    std::cerr << "[PerFrameSets] init invalid args\n";
+    LOGE("Initialization arguments invalid");
     return false;
   }
 
@@ -24,15 +27,17 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   m_device = device;
 
-  const uint32_t framesInFlight = bufs.frameCount();
+  const uint32_t framesInFlight = cameraBufs.frameCount();
 
   std::array<VkDescriptorPoolSize, 2> poolSizes{};
 
+  // UBOs: camera + debug
   poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  poolSizes[0].descriptorCount = framesInFlight;
+  poolSizes[0].descriptorCount = framesInFlight * 2;
 
+  // SSBOS: instance + material table
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  poolSizes[1].descriptorCount = framesInFlight * 2; // instance + materials
+  poolSizes[1].descriptorCount = framesInFlight * 2;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -42,8 +47,7 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   VkResult res = vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_pool);
   if (res != VK_SUCCESS) {
-    std::cerr << "[PerFrameSets] vkCreateDescriptorPool failed: " << res
-              << "\n";
+    LOGE("vkCreateDescriptorPool failed: {}", fmt::underlying(res));
     shutdown();
     return false;
   }
@@ -59,7 +63,7 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   m_sets.resize(framesInFlight);
   res = vkAllocateDescriptorSets(m_device, &allocInfo, m_sets.data());
   if (res != VK_SUCCESS) {
-    std::cerr << "[PerFrameSets] Failed to allocate descriptor sets\n";
+    LOGE("Descriptor sets allocation failed");
     shutdown();
     return false;
   }
@@ -73,16 +77,21 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   // Write set 0 bindings for each frame
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     VkDescriptorBufferInfo uboInfo{};
-    uboInfo.buffer = bufs.buffer(i).handle();
+    uboInfo.buffer = cameraBufs.buffer(i).handle();
     uboInfo.offset = 0;
-    uboInfo.range = bufs.stride();
+    uboInfo.range = cameraBufs.stride();
+
+    VkDescriptorBufferInfo debugInfo{};
+    debugInfo.buffer = debugBufs.buffer(i).handle();
+    debugInfo.offset = 0;
+    debugInfo.range = debugBufs.stride();
 
     VkDescriptorBufferInfo instanceInfo{};
     instanceInfo.buffer = instanceBuffer;
     instanceInfo.offset = VkDeviceSize(i) * instanceFrameStrideBytes;
     instanceInfo.range = instanceFrameStrideBytes;
 
-    std::array<VkWriteDescriptorSet, 3> writes{};
+    std::array<VkWriteDescriptorSet, 4> writes{};
 
     // binding 0: camera UBO
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -107,6 +116,14 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
     writes[2].descriptorCount = 1;
     writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[2].pBufferInfo = &materialInfo;
+
+    // binding 3: debug UBO
+    writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[3].dstSet = m_sets[i];
+    writes[3].dstBinding = 3;
+    writes[3].descriptorCount = 1;
+    writes[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[3].pBufferInfo = &debugInfo;
 
     vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
                            nullptr);

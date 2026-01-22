@@ -102,6 +102,19 @@ static void readVecN(const cgltf_accessor *acc, int n,
   }
 }
 
+static std::string textureUri(const cgltf_texture_view &view) {
+  if (view.texture == nullptr || view.texture->image == nullptr) {
+    return {};
+  }
+
+  const cgltf_image *img = view.texture->image;
+  if (img->uri == nullptr) {
+    return {};
+  }
+
+  return {img->uri};
+}
+
 static std::string baseColorUri(const cgltf_material *material) {
   if (material == nullptr) {
     return {};
@@ -109,7 +122,7 @@ static std::string baseColorUri(const cgltf_material *material) {
 
   // TODO: add roughness
   const cgltf_pbr_metallic_roughness &pbr = material->pbr_metallic_roughness;
-  if (pbr.base_color_texture.texture != nullptr) {
+  if (pbr.base_color_texture.texture == nullptr) {
     return {};
   };
 
@@ -179,8 +192,34 @@ static void loadMaterials(const cgltf_data *data, GltfSceneCpu &out,
         static_cast<std::uint32_t>(out.materials.size());
 
     GltfMaterialCpu m{};
-    m.baseColorTextureUri = baseColorUri(mat);
+
+    m.baseColorTextureUri =
+        textureUri(mat->pbr_metallic_roughness.base_color_texture);
+    m.metallicRoughnessTextureUri =
+        textureUri(mat->pbr_metallic_roughness.metallic_roughness_texture);
+    m.normalTextureUri = textureUri(mat->occlusion_texture);
+    m.emissiveTextureUri = textureUri(mat->emissive_texture);
+
     m.baseColorFactor = baseColorFactor(mat);
+    m.emissiveFactor =
+        glm::vec3(mat->emissive_factor[0], mat->emissive_factor[1],
+                  mat->emissive_factor[2]);
+
+    m.metallicFactor = mat->pbr_metallic_roughness.metallic_factor;
+    m.roughnessFactor = mat->pbr_metallic_roughness.roughness_factor;
+
+    m.occlusionStrength = mat->occlusion_texture.scale;
+    m.doubleSided = (mat->double_sided != 0);
+
+    if (mat->alpha_mode == cgltf_alpha_mode_mask) {
+      m.alphaMode = GltfAlphaMode::Mask;
+    } else if (mat->alpha_mode == cgltf_alpha_mode_blend) {
+      m.alphaMode = GltfAlphaMode::Blend;
+    } else {
+      m.alphaMode = GltfAlphaMode::Opaque;
+    }
+
+    m.alphaCutoff = mat->alpha_cutoff;
 
     out.materials.push_back(m);
     materialMap[mat] = outIdx;

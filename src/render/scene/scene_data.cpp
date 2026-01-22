@@ -5,6 +5,7 @@
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/camera/camera_ubo.hpp"
+#include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
 
 #include <cstdint>
@@ -51,6 +52,11 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
   }
 
   if (!initMaterialBuffer(ctx.allocator(), requestedMaxMaterials)) {
+    shutdown();
+    return false;
+  }
+
+  if (!initDebugBuffers(ctx.allocator(), framesInFlight)) {
     shutdown();
     return false;
   }
@@ -162,10 +168,15 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
   return true;
 }
 
+bool SceneData::initDebugBuffers(VmaAllocator allocator,
+                                 uint32_t framesInFlight) {
+  return m_debugBufs.init(allocator, framesInFlight, sizeof(DebugUBO));
+}
+
 bool SceneData::initDescriptorSets(VkDevice device,
                                    const VkShaderInterface &interface) {
   if (!m_sets.init(device, interface.setLayoutScene(), m_cameraBufs,
-                   m_instanceBuf.handle(), m_instanceFrameStride,
+                   m_debugBufs, m_instanceBuf.handle(), m_instanceFrameStride,
                    m_materialBuf.handle(), m_materialTableBytes)) {
     std::cerr << "[SceneData] Failed to init scene descriptor sets\n";
     return false;
@@ -177,6 +188,7 @@ void SceneData::shutdown() noexcept {
 
   m_instanceUploader.shutdown();
   m_sets.shutdown();
+  m_debugBufs.shutdown();
   m_materialBuf.shutdown();
   m_instanceBuf.shutdown();
   m_cameraBufs.shutdown();
@@ -194,7 +206,12 @@ bool SceneData::update(uint32_t frameIndex, const CameraUBO &camera) {
   }
 
   if (!m_cameraBufs.update(frameIndex, &camera, sizeof(CameraUBO))) {
-    std::cerr << "[PerFrameData] Failed to update camera UBO\n";
+    LOGE("Camera UBO update failed");
+    return false;
+  }
+
+  if (!m_debugBufs.update(frameIndex, &m_debug, sizeof(DebugUBO))) {
+    LOGE("Debug UBO update failed");
     return false;
   }
 

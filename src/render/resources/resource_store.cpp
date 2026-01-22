@@ -17,7 +17,8 @@ bool ResourceStore::init(VkBackendCtx &ctx, const VkShaderInterface &interface,
   }
 
   if (!m_materials.init(ctx, interface.setLayoutMaterial(),
-                        data.materialCapacity())) {
+                        data.materialCapacity(), interface.maxTexSrgb(),
+                        interface.maxTexLinear())) {
     std::cerr << "[ResourceStore] MaterialSystem init failed\n";
     shutdown();
     return false;

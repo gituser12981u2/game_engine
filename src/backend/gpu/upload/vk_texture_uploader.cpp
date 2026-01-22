@@ -22,8 +22,9 @@ bool VkTextureUploader::init(VkBackendCtx &ctx) {
 void VkTextureUploader::shutdown() noexcept { m_ctx = nullptr; }
 
 bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
-                                    const void *rgbaPixels, uint32_t width,
-                                    uint32_t height, VkTexture2D &out,
+                                    const void *rgbaPixels, VkFormat fmt,
+                                    uint32_t width, uint32_t height,
+                                    VkTexture2D &out,
                                     VkPipelineStageFlags finalStage) {
   if (!recorder) {
     std::cerr << "[TextureUpload] Invalid recorder\n";
@@ -55,10 +56,10 @@ bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
   out.shutdown();
 
   // TODO: check for VK_FORMAT_R8G8B8A8_UNORM
-  if (!out.image.init2D(
-          m_ctx->allocator(), width, height, VK_FORMAT_R8G8B8A8_SRGB,
-          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-          VK_IMAGE_TILING_OPTIMAL)) {
+  if (!out.image.init2D(m_ctx->allocator(), width, height, fmt,
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                            VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_TILING_OPTIMAL)) {
     std::cerr << "[TextureUpload] Failed to create device-local image\n";
     return false;
   }
@@ -74,8 +75,7 @@ bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
 
   out.device = device;
 
-  if (!vkCreateTextureView(device, out.image.handle(), VK_FORMAT_R8G8B8A8_SRGB,
-                           out.view)) {
+  if (!vkCreateTextureView(device, out.image.handle(), fmt, out.view)) {
     out.shutdown();
     return false;
   }

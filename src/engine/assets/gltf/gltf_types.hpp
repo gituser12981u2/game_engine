@@ -2,19 +2,33 @@
 
 #include "engine/mesh/mesh_data.hpp"
 
+#include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <string>
 #include <vector>
 
 namespace engine::assets {
 
-struct GltfMaterialCpu {
-  // TODO: add more than albedo
-  std::string baseColorTextureUri;
+enum class GltfAlphaMode : uint8_t { Opaque = 0, Mask = 1, Blend = 2 };
 
-  // gLTF baseColorFactor in (RGBA)
-  glm::vec4 baseColorFactor{1.0F, 1.0F, 1.0F, 1.0F};
+struct GltfMaterialCpu {
+  std::string baseColorTextureUri;
+  std::string metallicRoughnessTextureUri;
+  std::string occlusionTextureUri;
+  std::string emissiveTextureUri;
+  std::string normalTextureUri;
+
+  glm::vec4 baseColorFactor{1, 1, 1, 1};
+  glm::vec3 emissiveFactor{0, 0, 0};
+  float metallicFactor = 1.0F;
+  float roughnessFactor = 1.0F;
+  float occlusionStrength = 1.0F;
+
+  GltfAlphaMode alphaMode = GltfAlphaMode::Opaque;
+  float alphaCutoff = 0.5F;
+  bool doubleSided = false;
 };
 
 struct GltfPrimitiveCpu {

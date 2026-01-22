@@ -10,7 +10,6 @@
 #include "render/rendergraph/main_pass.hpp"
 #include "render/rendergraph/swapchain_targets.hpp"
 
-#include "render/resources/material_gpu.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
 #include "render/resources/resource_store.hpp"
@@ -128,14 +127,11 @@ public:
   [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
 
   // Materials
-  TextureHandle createTextureFromFile(const std::string &path, bool flipY);
-  bool createTextureFromImage(const engine::ImageData &img,
-                              VkTexture2D &outTex);
+  TextureHandle loadTextureFromFile(const std::string &path, bool flipY,
+                                    MaterialSystem::TextureUsage usage);
 
-  uint32_t createMaterialFromTexture(TextureHandle textureHandle);
-  uint32_t createMaterialFromBaseColorFactor(const glm::vec4 &factor);
-  void setActiveMaterial(uint32_t materialIndex);
-  bool updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu);
+  uint32_t createMaterial(const MaterialSystem::MaterialDescription &desc);
+  uint32_t createMaterialFromTexture(TextureHandle albedo);
 
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);

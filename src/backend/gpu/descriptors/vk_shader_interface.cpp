@@ -8,21 +8,25 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkShaderInterface::init(VkDevice device) {
+bool VkShaderInterface::init(VkDevice device, uint32_t maxTexSrgb,
+                             uint32_t maxTexLinear) {
   if (device == VK_NULL_HANDLE) {
     std::cerr << "[ShaderInterface] init invalid args\n";
     return false;
   }
 
   shutdown();
-  m_device = device;
 
-  // set=0 binding=0: per frame UBO (camera)
-  VkDescriptorSetLayoutBinding uboBinding{};
-  uboBinding.binding = 0;
-  uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  uboBinding.descriptorCount = 1;
-  uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+  m_device = device;
+  m_maxTexSrgb = maxTexSrgb;
+  m_maxTexLinear = maxTexLinear;
+
+  // set=0 binding=0: camera UBO per frame
+  VkDescriptorSetLayoutBinding cameraBinding{};
+  cameraBinding.binding = 0;
+  cameraBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  cameraBinding.descriptorCount = 1;
+  cameraBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
   // set=0 binding=1: instance SSBO
   VkDescriptorSetLayoutBinding instanceBinding{};
@@ -39,8 +43,15 @@ bool VkShaderInterface::init(VkDevice device) {
   materialBinding.stageFlags =
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  std::array<VkDescriptorSetLayoutBinding, 3> bindings{
-      uboBinding, instanceBinding, materialBinding};
+  // set=0, binding=3: debug UBO
+  VkDescriptorSetLayoutBinding debugBinding{};
+  debugBinding.binding = 3;
+  debugBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  debugBinding.descriptorCount = 1;
+  debugBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  std::array<VkDescriptorSetLayoutBinding, 4> bindings{
+      cameraBinding, debugBinding, instanceBinding, materialBinding};
 
   VkDescriptorSetLayoutCreateInfo perFrameInfo{};
   perFrameInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -57,18 +68,45 @@ bool VkShaderInterface::init(VkDevice device) {
     return false;
   }
 
-  // set=1 binding=0: Material sampler2D
-  VkDescriptorSetLayoutBinding textureBinding{};
-  textureBinding.binding = 0;
-  textureBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  textureBinding.descriptorCount = 1;
-  textureBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+  // set=1 binding=0: sRgb sampler2D
+  VkDescriptorSetLayoutBinding texSrgb{};
+  texSrgb.binding = 0;
+  texSrgb.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  texSrgb.descriptorCount = m_maxTexSrgb;
+  texSrgb.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  // set=1 binding=1: linear sampler2D
+  VkDescriptorSetLayoutBinding texLin{};
+  texLin.binding = 1;
+  texLin.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  texLin.descriptorCount = m_maxTexLinear;
+  texLin.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  std::array<VkDescriptorSetLayoutBinding, 2> materialBindings{texSrgb, texLin};
+
+  // Binding flags for descriptor indexing
+  std::array<VkDescriptorBindingFlags, 2> materialBindingFlags{
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+  };
+
+  VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
+  flagsInfo.sType =
+      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+  flagsInfo.bindingCount = static_cast<uint32_t>(materialBindingFlags.size());
+  flagsInfo.pBindingFlags = materialBindingFlags.data();
 
   VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
   materialLayoutInfo.sType =
       VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  materialLayoutInfo.bindingCount = 1;
-  materialLayoutInfo.pBindings = &textureBinding;
+  materialLayoutInfo.pNext = &flagsInfo;
+  materialLayoutInfo.flags =
+      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+  materialLayoutInfo.bindingCount =
+      static_cast<uint32_t>(materialBindings.size());
+  materialLayoutInfo.pBindings = materialBindings.data();
 
   res = vkCreateDescriptorSetLayout(m_device, &materialLayoutInfo, nullptr,
                                     &m_setLayoutMaterial);
@@ -81,7 +119,8 @@ bool VkShaderInterface::init(VkDevice device) {
 
   // Push constant (model matrix)
   VkPushConstantRange pushRange{};
-  pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+  pushRange.stageFlags =
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
   pushRange.offset = 0;
   pushRange.size = sizeof(DrawPushConstants);
 

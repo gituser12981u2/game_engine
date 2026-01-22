@@ -30,8 +30,10 @@ public:
     return *this;
   }
 
+  // TODO: simplify
   bool init(VkDevice device, VkDescriptorSetLayout layout,
-            const VkPerFrameUniformBuffers &uboBufs, VkBuffer instanceBuffer,
+            const VkPerFrameUniformBuffers &cameraBufs,
+            const VkPerFrameUniformBuffers &debugBufs, VkBuffer instanceBuffer,
             VkDeviceSize instanceFrameStrideBytes, VkBuffer materialBuffer,
             VkDeviceSize materialTableBytes);
   void shutdown() noexcept;

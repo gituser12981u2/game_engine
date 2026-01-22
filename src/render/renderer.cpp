@@ -13,8 +13,10 @@
 #include "engine/mesh/mesh_data.hpp"
 
 #include "render/rendergraph/swapchain_targets.hpp"
+#include "render/resources/material_system.hpp"
 #include "render/resources/mesh_gpu.hpp"
 #include "render/resources/mesh_store.hpp"
+#include "render/scene/debug_ubo.hpp"
 #include "render/scene/push_constants.hpp"
 
 #include "util/scope_exit.hpp"
@@ -46,6 +48,9 @@ static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
+static constexpr uint32_t kMaxTexSrgb = 4096;
+static constexpr uint32_t kMaxTexLinear = 4096;
+
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                     uint32_t framesInFlight, const std::string &vertSpvPath,
                     const std::string &fragSpvPath, JobSystem &jobs) {
@@ -73,10 +78,12 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   LOGI("Renderer initialized: framesInFlight={} | threadCount: {} | shaders: "
        "vert='{}' frag='{}' "
        "| "
-       "uploadMiB: static={} frame={} | caps: instances={} materials={}",
+       "uploadMiB: static={} frame={} | caps: instances={} materials={} "
+       "TexturessRGB={}, TexturesLinear{}",
        framesInFlight, m_jobs->threadCount(), vertSpvPath, fragSpvPath,
        kUploadStaticBudget / kMiB, kUploadFrameBudget / kMiB,
-       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials);
+       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials, kMaxTexSrgb,
+       kMaxTexLinear);
 
   VkDevice device = m_ctx->device();
 
@@ -94,7 +101,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
 
   // Create shader interface
-  if (!m_interface.init(device)) {
+  if (!m_interface.init(device, kMaxTexSrgb, kMaxTexLinear)) {
     LOGE("Failed to initialize shader interface");
     shutdown();
     return false;
@@ -145,6 +152,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
 
   m_resources.materials().bindMaterialTable(m_scene.materialBuffer(),
                                             m_scene.materialCapacity());
+  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 
   // Create a 1x1 default white texture and material
   // TOOD: use job system worker instead of hardcoding 0
@@ -304,7 +312,9 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
   m_scene.bind(cmd, m_interface, m_frames.currentFrameIndex());
-  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
+  m_resources.materials().bindTextureTables(cmd, m_interface.pipelineLayout(),
+                                            1);
+  PROFILE_CPU_INC_DESCRIPTOR_BINDS(2);
 
   // TODO: sort by mesh, material and stream directly into the uploader
   // without building vectors per batch
@@ -335,7 +345,9 @@ BatchMap Renderer::buildBatches(std::span<const DrawItem> items) const {
       continue;
     }
 
-    uint32_t mat = m_resources.materials().resolveMaterial(item.material);
+    uint32_t mat = (item.material != UINT32_MAX)
+                       ? item.material
+                       : m_resources.materials().defaultMaterial();
     batches[BatchKey{.mesh = item.mesh, .material = mat}].push_back(item.model);
   }
 
@@ -371,17 +383,14 @@ void Renderer::drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
     const uint32_t instanceCount = instanceUpload.instanceCount;
     PROFILE_CPU_ADD_INSTANCES(instanceCount);
 
-    m_resources.materials().bindMaterial(cmd, m_interface.pipelineLayout(), 1,
-                                         key.material);
-    PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
-
     DrawPushConstants pushConstants{};
     pushConstants.baseInstance = instanceUpload.baseInstance;
     pushConstants.materialId = key.material;
 
     vkCmdPushConstants(cmd, m_interface.pipelineLayout(),
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(DrawPushConstants),
-                       &pushConstants);
+                       VK_SHADER_STAGE_VERTEX_BIT |
+                           VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0, sizeof(DrawPushConstants), &pushConstants);
 
     VkDeviceSize vertBufOffset = 0;
     VkBuffer vertBuf = mesh->vertex.handle();
@@ -470,6 +479,12 @@ bool Renderer::drawFrame(VkPresenter &presenter,
   {
     PROFILE_CPU_SCOPE(CpuProfiler::Stat::UpdatePerFrameUBO);
     (void)m_scene.update(frameIndex, m_cameraUbo);
+
+#ifndef NDEBUG
+    DebugUBO dbg{};
+    dbg.view = 0;
+    m_scene.setDebug(dbg);
+#endif
   }
 
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
@@ -558,41 +573,26 @@ const MeshGpu *Renderer::get(MeshHandle handle) const {
   return m_resources.meshes().get(handle);
 }
 
-TextureHandle Renderer::createTextureFromFile(const std::string &path,
-                                              bool flipY) {
-
-  return m_resources.materials().createTextureFromFile(
-      m_uploads.staticRecorder(2), path, flipY);
-}
-
-uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
+TextureHandle
+Renderer::loadTextureFromFile(const std::string &path, bool flipY,
+                              MaterialSystem::TextureUsage usage) {
   // TODO: make logic for if static or frame recorder
-  LOGI("Creating Material from texture");
-  return m_resources.materials().createMaterialFromTexture(
-      m_uploads.staticRecorder(2), handle);
+  return m_resources.materials().loadTextureFromFile(
+      m_uploads.staticRecorder(0), path, flipY, usage);
 }
 
-uint32_t Renderer::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
+uint32_t
+Renderer::createMaterial(const MaterialSystem::MaterialDescription &desc) {
   // TODO: make logic for if static or frame recorder
-  return m_resources.materials().createMaterialFromBaseColorFactor(
-      m_uploads.staticRecorder(2), factor);
+  return m_resources.materials().createMaterial(m_uploads.staticRecorder(0),
+                                                desc);
 }
 
-bool Renderer::createTextureFromImage(const engine::ImageData &img,
-                                      VkTexture2D &outTex) {
-  return m_resources.materials().createTextureFromImage(
-      m_uploads.staticRecorder(2), img, outTex);
-}
-
-void Renderer::setActiveMaterial(uint32_t materialIndex) {
-  m_resources.materials().setActiveMaterial(materialIndex);
-}
-
-bool Renderer::updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu) {
-  // TODO: make logic for if static or frame recorder
-  return m_resources.materials().updateMaterialGPU(m_uploads.staticRecorder(3),
-                                                   materialId, gpu);
-}
+// uint32_t createMaterialFromTexture(TextureHandle albedo) {
+//   MaterialSystem::MaterialDescription desc{};
+//   desc.baseColor = albedo;
+//   return createMaterial(desc);
+// }
 
 bool Renderer::beginUpload(uint32_t frameIndex) {
   return m_uploads.beginFrame(frameIndex);
