@@ -67,7 +67,6 @@ VkSurfaceFormatKHR VkSwapchain::chooseSwapSurfaceFormat(
   }
 
   // Prefer BGRA8 and sRGB_NONLINEAR
-  // TODO: Make this user defined through a public API
   for (const auto &availableFormat : availableFormats) {
     if (availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
         availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB) {

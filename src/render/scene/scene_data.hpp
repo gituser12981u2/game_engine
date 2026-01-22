@@ -84,7 +84,6 @@ private:
   VkBufferObj m_instanceBuf; // device-local storage buffer
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
-  VkInstanceUploader m_instanceUploader;
 
   VkPerFrameUniformBuffers m_debugBufs;
   DebugUBO m_debug = {};

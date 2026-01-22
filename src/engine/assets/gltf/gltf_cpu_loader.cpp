@@ -115,30 +115,6 @@ static std::string textureUri(const cgltf_texture_view &view) {
   return {img->uri};
 }
 
-static std::string baseColorUri(const cgltf_material *material) {
-  if (material == nullptr) {
-    return {};
-  }
-
-  // TODO: add roughness
-  const cgltf_pbr_metallic_roughness &pbr = material->pbr_metallic_roughness;
-  if (pbr.base_color_texture.texture == nullptr) {
-    return {};
-  };
-
-  const cgltf_texture *tex = pbr.base_color_texture.texture;
-  if (tex == nullptr || tex->image == nullptr) {
-    return {};
-  }
-
-  const cgltf_image *img = tex->image;
-  if (img->uri == nullptr) {
-    return {};
-  }
-
-  return {img->uri};
-}
-
 static glm::vec4 baseColorFactor(const cgltf_material *material) {
   if (material == nullptr) {
     return {1, 1, 1, 1};

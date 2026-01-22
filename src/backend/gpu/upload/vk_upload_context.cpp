@@ -3,6 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 #include "util/vk_barrier.hpp"
 
 #include <algorithm>
@@ -10,7 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
+#include <fmt/format.h>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -114,7 +115,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
 
   if (m_pools == nullptr || m_cmds == nullptr || m_fences == nullptr ||
       m_heads == nullptr || m_begun == nullptr || m_hadWork == nullptr) {
-    std::cerr << "[UploadCtx] Allocation failed\n";
+    LOGE("Allocation failed");
     shutdown();
     return false;
   }
@@ -127,7 +128,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
   if (!m_staging.init(m_ctx->allocator(), totalBytes,
                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                       VkBufferObj::MemUsage::CpuToGpu, /*mapped*/ true)) {
-    std::cerr << "[UploadCtx] Failed to create staging buffer\n";
+    LOGE("Staging buffer creation failed");
     shutdown();
     return false;
   }
@@ -140,7 +141,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
     VkResult res =
         vmaMapMemory(m_ctx->allocator(), m_staging.allocation(), &mapped);
     if (res != VK_SUCCESS || mapped == nullptr) {
-      std::cerr << "[UploadCtx] vmaMapMemory staging failed: " << res << "\n";
+      LOGE("vmaMapMemory staging failed: {}", fmt::underlying(res));
       shutdown();
       return false;
     }
@@ -157,7 +158,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
     VkResult res =
         vkCreateFence(m_ctx->device(), &fenceInfo, nullptr, &m_fences[fi]);
     if (res != VK_SUCCESS) {
-      std::cerr << "[UploadCtx] vkCreateFence failed: " << res << "\n";
+      LOGE("vkCreateFence failed: {}", fmt::underlying(res));
       shutdown();
       return false;
     }
@@ -175,7 +176,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
       VkResult res =
           vkCreateCommandPool(m_ctx->device(), &cmdPoolInfo, nullptr, &pool);
       if (res != VK_SUCCESS) {
-        std::cerr << "[UploadCtx] vkCreateComandPool failed: " << res << "\n";
+        LOGE("vkCreateCommandPool failed: {}", fmt::underlying(res));
         shutdown();
         return false;
       }
@@ -190,8 +191,7 @@ bool VkUploadContext::initCommon(VkBackendCtx &ctx, Mode mode,
       VkCommandBuffer cmd = VK_NULL_HANDLE;
       res = vkAllocateCommandBuffers(m_ctx->device(), &cmdAllocInfo, &cmd);
       if (res != VK_SUCCESS) {
-        std::cerr << "[UploadCtx] vkAllocateCommandBuffers failed: " << res
-                  << "\n";
+        LOGE("vkAllocateCommandBuffers failed: {}", fmt::underlying(res));
         shutdown();
         return false;
       }
@@ -210,7 +210,7 @@ bool VkUploadContext::initFrameRing(VkBackendCtx &ctx, uint32_t framesInFlight,
                                     VkDeviceSize bytesPerFrameSlice,
                                     uint32_t threadCount) {
   if (framesInFlight == 0 || bytesPerFrameSlice == 0 || threadCount == 0) {
-    std::cerr << "[UploadCtx] Invalid initFrameRing args\n";
+    LOGE("Invalid arguments");
     return false;
   }
 
@@ -221,7 +221,7 @@ bool VkUploadContext::initFrameRing(VkBackendCtx &ctx, uint32_t framesInFlight,
 bool VkUploadContext::initOneShot(VkBackendCtx &ctx, VkDeviceSize totalBytes,
                                   uint32_t threadCount) {
   if (totalBytes == 0 || threadCount == 0) {
-    std::cerr << "[UploadCtx] Invalid initOnShot args\n";
+    LOGE("Invalid arguments");
     return false;
   }
 
@@ -305,12 +305,12 @@ void VkUploadContext::shutdown() noexcept {
 
 bool VkUploadContext::waitAndReset(uint32_t frameIndex) {
   if (m_ctx == nullptr || m_pools == VK_NULL_HANDLE || m_fences == nullptr) {
-    std::cerr << "[UploadCtx] waitAndReset invalid state\n";
+    LOGE("waitAndReset invalid state");
     return false;
   }
 
   if (frameIndex >= m_framesInFlight) {
-    std::cerr << "[UploadCtx] waitAndReset frameIndex out of range\n";
+    LOGE("waitAndReset frameIndex out of range");
     return false;
   }
 
@@ -320,7 +320,7 @@ bool VkUploadContext::waitAndReset(uint32_t frameIndex) {
   VkResult res =
       vkWaitForFences(m_ctx->device(), 1, &fence, VK_TRUE, UINT64_MAX);
   if (res != VK_SUCCESS) {
-    std::cerr << "[UploadCtx] vkWaitForFences failed: " << res << "\n";
+    LOGE("vkWaitForFences failed: {}", fmt::underlying(res));
     return false;
   }
 
@@ -341,7 +341,7 @@ bool VkUploadContext::waitAndReset(uint32_t frameIndex) {
 
 bool VkUploadContext::beginFrame(uint32_t frameIndex) {
   if (m_mode != Mode::FrameRing) {
-    std::cerr << "[UploadCtx] beginFrame called on non-FrameRing context\n";
+    LOGE("beginFrame called on non-FrameRing context");
     return false;
   }
   return waitAndReset(frameIndex);
@@ -349,7 +349,7 @@ bool VkUploadContext::beginFrame(uint32_t frameIndex) {
 
 bool VkUploadContext::beginBatch() {
   if (m_mode != Mode::OneShot) {
-    std::cerr << "[UploadCtx] beginBatch called on non-OneShot context\n";
+    LOGE("beginBatch called on non-OneShot context");
     return false;
   }
   return waitAndReset(0);
@@ -362,6 +362,7 @@ VkUploadContext::Recorder VkUploadContext::recorder(uint32_t frameIndex,
   }
 
   if (threadIndex >= m_threadCount) {
+    LOGE("threadIndex is larger than threadCount");
     return {};
   }
 
@@ -370,6 +371,7 @@ VkUploadContext::Recorder VkUploadContext::recorder(uint32_t frameIndex,
   }
 
   if (frameIndex >= m_framesInFlight) {
+    LOGE("frameIndex is larger than framesInFlight");
     return {};
   }
 
@@ -377,8 +379,6 @@ VkUploadContext::Recorder VkUploadContext::recorder(uint32_t frameIndex,
 }
 
 bool VkUploadContext::beginCmd(uint32_t frameIndex, uint32_t threadIndex) {
-  // TODO: make single method for this, renderer, and command to use
-
   VkCommandBuffer cmd = cmdAt(frameIndex, threadIndex);
   if (cmd == VK_NULL_HANDLE) {
     return false;
@@ -390,7 +390,7 @@ bool VkUploadContext::beginCmd(uint32_t frameIndex, uint32_t threadIndex) {
 
   VkResult res = vkBeginCommandBuffer(cmd, &bufBeginInfo);
   if (res != VK_SUCCESS) {
-    std::cerr << "[UploadCtx] vkBeginCommandBuffer failed: " << res << "\n";
+    LOGE("vkBeginCommandBuffer failed: {}", fmt::underlying(res));
     return false;
   }
 
@@ -406,7 +406,7 @@ bool VkUploadContext::endCmd(uint32_t frameIndex, uint32_t threadIndex) {
 
   VkResult res = vkEndCommandBuffer(cmd);
   if (res != VK_SUCCESS) {
-    std::cerr << "[UploadCtx] vkEndCommandBuffer failed: " << res << "\n";
+    LOGE("vkEndCommandBuffer failed: {}", fmt::underlying(res));
     return false;
   }
 
@@ -481,7 +481,7 @@ bool VkUploadContext::submit(uint32_t frameIndex, bool wait) {
   VkFence fence = m_fences[frameIndex];
   VkResult res = vkResetFences(m_ctx->device(), 1, &fence);
   if (res != VK_SUCCESS) {
-    std::cerr << "[UploadCtx] vkResetFences failed: " << res << "\n";
+    LOGE("vkResetFences failed: {}", fmt::underlying(res));
     return false;
   }
 
@@ -492,7 +492,7 @@ bool VkUploadContext::submit(uint32_t frameIndex, bool wait) {
 
   res = vkQueueSubmit(m_ctx->graphicsQueue(), 1, &submitInfo, fence);
   if (res != VK_SUCCESS) {
-    std::cerr << "[UploadCtx] vkQueueSubmit failed: " << res << "\n";
+    LOGE("vkQueueSubmit failed: {}", fmt::underlying(res));
     return false;
   }
 
@@ -501,7 +501,7 @@ bool VkUploadContext::submit(uint32_t frameIndex, bool wait) {
   if (wait) {
     res = vkWaitForFences(m_ctx->device(), 1, &fence, VK_TRUE, UINT64_MAX);
     if (res != VK_SUCCESS) {
-      std::cerr << "[UploadCtx] vkWaitForFences(wait) failed: " << res << "\n";
+      LOGE("vkWaitForFences(wait) failed: {}", fmt::underlying(res));
       return false;
     }
   }
@@ -511,7 +511,7 @@ bool VkUploadContext::submit(uint32_t frameIndex, bool wait) {
 
 bool VkUploadContext::flushFrame(uint32_t frameIndex, bool wait) {
   if (m_mode != Mode::FrameRing) {
-    std::cerr << "[UploadCtx] flushFrame called on non-FrameRing context\n";
+    LOGE("flushFrame called on non-FrameRing context");
     return false;
   }
 
@@ -524,7 +524,7 @@ bool VkUploadContext::flushFrame(uint32_t frameIndex, bool wait) {
 
 bool VkUploadContext::flushBatch(bool wait) {
   if (m_mode != Mode::OneShot) {
-    std::cerr << "[UploadCtx] flushBatch called on non-OneShot context\n";
+    LOGE("flushBatch called on non-oneShot context");
     return false;
   }
 
@@ -553,8 +553,8 @@ void VkUploadContext::transitionImage(VkCommandBuffer cmd, VkImage image,
     srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
     dstAccess = VK_ACCESS_SHADER_READ_BIT;
   } else {
-    std::cerr << "[UploadCtx] Unsupported layout transition " << oldLayout
-              << " -> " << newLayout << "\n";
+    LOGE("Unsupported layout transition {} -> {}", fmt::underlying(oldLayout),
+         fmt::underlying(newLayout));
     return;
   }
 
@@ -649,8 +649,8 @@ void VkUploadContext::Recorder::cmdUploadRGBA8ToImage(
   const uint32_t k = m_ctx->idx(m_frameIndex, m_threadIndex);
   m_ctx->m_hadWork[k] = 1;
 
-  m_ctx->transitionImage(c, image, VK_IMAGE_LAYOUT_UNDEFINED,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalStage);
+  transitionImage(c, image, VK_IMAGE_LAYOUT_UNDEFINED,
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalStage);
 
   VkBufferImageCopy region{};
   region.bufferOffset = srcOffset;
@@ -666,6 +666,6 @@ void VkUploadContext::Recorder::cmdUploadRGBA8ToImage(
   vkCmdCopyBufferToImage(c, m_ctx->m_staging.handle(), image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-  m_ctx->transitionImage(c, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         finalLayout, finalStage);
+  transitionImage(c, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalLayout,
+                  finalStage);
 }

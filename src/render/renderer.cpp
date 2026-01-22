@@ -121,16 +121,9 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
   LOGI("Main render pass initialized");
 
-  // TODO: use job system workers instead of hard setting to 1 thread
   if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudget,
                       kUploadFrameBudget, m_jobs->threadCount())) {
     LOGE("Failed to initialize upload manager");
-    shutdown();
-    return false;
-  }
-
-  if (!m_uploads.beginStatic()) {
-    LOGE("Failed to begin upload frame");
     shutdown();
     return false;
   }
@@ -151,19 +144,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   m_resources.materials().bindMaterialTable(m_scene.materialBuffer(),
                                             m_scene.materialCapacity());
 
-  // Create a 1x1 default white texture and material
-  // TOOD: use job system worker instead of hardcoding 0
-  if (!m_resources.materials().createDefaultMaterial(
-          m_uploads.staticRecorder(0))) {
-    LOGE("Failed to create the default material");
-    shutdown();
-    return false;
-  }
-  LOGD("Default material created");
-
-  // Submit + wait for default material
-  if (!m_uploads.flushStatic(false)) {
-    LOGE("Failed to flush static uploads");
+  if (!createDefaultMaterial()) {
     shutdown();
     return false;
   }
@@ -216,6 +197,29 @@ void Renderer::shutdown() noexcept {
 
   m_vertPath.clear();
   m_fragPath.clear();
+}
+
+bool Renderer::createDefaultMaterial() noexcept {
+  if (!m_uploads.beginStatic()) {
+    LOGE("Failed to begin upload frame");
+    return false;
+  }
+
+  // Create a 1x1 default white texture and material
+  // TOOD: use job system worker instead of hardcoding 0
+  if (!m_resources.materials().createDefaultMaterial(
+          m_uploads.staticRecorder(0))) {
+    return false;
+  }
+  LOGD("Default material created");
+
+  // Submit + wait for default material
+  if (!m_uploads.flushStatic(false)) {
+    LOGE("Failed to flush static uploads");
+    return false;
+  }
+
+  return true;
 }
 
 void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,

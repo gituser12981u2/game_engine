@@ -3,7 +3,6 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/descriptors/vk_material_sets.hpp"
 #include "backend/gpu/textures/vk_texture.hpp"
-#include "backend/gpu/upload/vk_material_uploader.hpp"
 #include "backend/gpu/upload/vk_texture_uploader.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "engine/assets/image_data.hpp"
@@ -107,7 +106,6 @@ private:
                         const MaterialGPU &gpu);
 
   VkTextureUploader m_textureUploader;
-  VkMaterialUploader m_materialUploader;
 
   std::vector<VkTexture2D> m_textures;
   uint32_t m_maxTextures = 0;

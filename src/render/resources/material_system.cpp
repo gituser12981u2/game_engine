@@ -1,8 +1,8 @@
 #include "render/resources/material_system.hpp"
 
 #include "backend/gpu/textures/vk_texture.hpp"
+#include "backend/gpu/upload/vk_material_uploader.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
-#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/assets/stb_image/stb_image_loader.hpp"
 #include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
@@ -45,12 +45,6 @@ bool MaterialSystem::init(VkBackendCtx &ctx,
     return false;
   }
 
-  if (!m_materialUploader.init()) {
-    LOGE("Material uploader initialized failed");
-    shutdown();
-    return false;
-  }
-
   const uint32_t cappedCapacity =
       clampMaterialSsboCapactiy(ctx.physicalDevice(), materialCapacity);
   if (cappedCapacity == 0) {
@@ -83,7 +77,6 @@ void MaterialSystem::shutdown() noexcept {
   m_maxTextures = 0;
 
   m_textureUploader.shutdown();
-  m_materialUploader.shutdown();
 
   m_materialTable = VK_NULL_HANDLE;
   m_materialTableCapacity = 0;
@@ -200,8 +193,7 @@ bool MaterialSystem::writeMaterialGPU(VkUploadContext::Recorder recorder,
   }
 
   const VkDeviceSize dstOffset = VkDeviceSize(materialId) * sizeof(MaterialGPU);
-  return m_materialUploader.uploadOne(recorder, m_materialTable, dstOffset,
-                                      gpu);
+  return MaterialUploader::uploadOne(recorder, m_materialTable, dstOffset, gpu);
 }
 
 uint32_t MaterialSystem::createMaterial(VkUploadContext::Recorder recorder,

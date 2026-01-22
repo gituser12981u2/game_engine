@@ -13,6 +13,7 @@ The engine shall support
 
 Advanced possible supports
 - Virtualized Geometry 
+- Global Illumination
 
 The game that shall be made with this engine is a game with movement inspired by quake.
 The game shall feature older-quake-like graphics and will likely have a single player,
@@ -32,13 +33,20 @@ The focus of this game engine is to make a game playable on all devices with lit
     - [x] mesh import
     - [x] base texture/material
     - [ ] normals
-    - [ ] other PBR
-- [ ] PBR API for non imports 
+    - [x] other PBR
+- [ ] lighting
+- [x] PBR API for non imports 
 - [x] Vulkan Memory Allocator (VMA) refactor 
+- [ ] Mipmaps
 - [ ] Depth pre-pass 
 - [ ] Forward+ lighting
+
+## MVP 2
+- [ ] Editor
 - [ ] Job System
+    - Basic Multithreading for uploader [x]
+    - Dynamic picking of threads for jobs [ ]
 - [ ] ECS
-- [ ] Mipmaps
+
 - [ ] Basic physics engine
 - [ ] Player Controller

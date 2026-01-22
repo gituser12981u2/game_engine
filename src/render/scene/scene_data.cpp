@@ -3,6 +3,7 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
+#include "backend/gpu/upload/vk_instance_uploader.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/camera/camera_ubo.hpp"
 #include "engine/logging/log.hpp"
@@ -65,8 +66,6 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     shutdown();
     return false;
   }
-
-  (void)m_instanceUploader.init();
 
   m_initiailized = true;
   return true;
@@ -185,8 +184,6 @@ bool SceneData::initDescriptorSets(VkDevice device,
 }
 
 void SceneData::shutdown() noexcept {
-
-  m_instanceUploader.shutdown();
   m_sets.shutdown();
   m_debugBufs.shutdown();
   m_materialBuf.shutdown();
@@ -235,7 +232,7 @@ SceneData::uploadInstances(VkUploadContext::Recorder recorder,
   const VkDeviceSize frameBase =
       VkDeviceSize(frameIndex) * m_instanceFrameStride;
 
-  return m_instanceUploader.uploadMat4Instances(
+  return InstanceUploader::uploadMat4Instances(
       recorder, m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
       m_maxInstancesPerFrame, cursorInstances, models);
 }

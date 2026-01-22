@@ -2,22 +2,18 @@
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
 
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkMaterialUploader::init() { return true; }
+namespace MaterialUploader {
 
-void VkMaterialUploader::shutdown() noexcept {}
-
-bool VkMaterialUploader::uploadOne(VkUploadContext::Recorder recorder,
-                                   VkBuffer materialBuffer,
-                                   VkDeviceSize dstOffsetBytes,
-                                   const MaterialGPU &material,
-                                   VkPipelineStageFlags dstStage) {
+bool uploadOne(VkUploadContext::Recorder recorder, VkBuffer materialBuffer,
+               VkDeviceSize dstOffsetBytes, const MaterialGPU &material,
+               VkPipelineStageFlags dstStage) {
   if (!recorder || materialBuffer == VK_NULL_HANDLE) {
     return false;
   }
@@ -26,7 +22,7 @@ bool VkMaterialUploader::uploadOne(VkUploadContext::Recorder recorder,
 
   VkStagingAlloc stage = recorder.allocStaging(bytes, /*alignment=*/16);
   if (!stage) {
-    std::cerr << "[MaterialUploader] allocStaging failed\n";
+    LOGE("allocStaging failed");
     return false;
   }
 
@@ -45,3 +41,5 @@ bool VkMaterialUploader::uploadOne(VkUploadContext::Recorder recorder,
 
   return true;
 }
+
+} // namespace MaterialUploader
