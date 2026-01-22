@@ -30,12 +30,11 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, VkDescriptorSetLayout layout, uint32_t maxTexSrgb,
-            uint32_t maxTexLin);
+  bool init(VkDevice device, VkDescriptorSetLayout layout,
+            uint32_t maxTextures);
   void shutdown() noexcept;
 
-  bool writeSrgb(uint32_t index, const VkTexture2D &tex);
-  bool writeLinear(uint32_t index, const VkTexture2D &tex);
+  bool writeTexture(uint32_t slot, const VkTexture2D &texture);
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
             uint32_t setIndex) const;
@@ -50,6 +49,6 @@ private:
   VkDescriptorPool m_pool = VK_NULL_HANDLE;        // non-owning
   VkDescriptorSetLayout m_layout = VK_NULL_HANDLE; // non-owning
   VkDescriptorSet m_set = VK_NULL_HANDLE;
-  uint32_t m_maxSrgb = 0;
-  uint32_t m_maxLinear = 0;
+
+  uint32_t m_maxTextures = 0; // non-owning
 };

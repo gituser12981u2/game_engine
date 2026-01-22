@@ -48,8 +48,7 @@ static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
-static constexpr uint32_t kMaxTexSrgb = 4096;
-static constexpr uint32_t kMaxTexLinear = 4096;
+static constexpr uint32_t kMaxTextures = 8192;
 
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                     uint32_t framesInFlight, const std::string &vertSpvPath,
@@ -79,11 +78,10 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
        "vert='{}' frag='{}' "
        "| "
        "uploadMiB: static={} frame={} | caps: instances={} materials={} "
-       "TexturessRGB={}, TexturesLinear{}",
+       "Textures={}",
        framesInFlight, m_jobs->threadCount(), vertSpvPath, fragSpvPath,
        kUploadStaticBudget / kMiB, kUploadFrameBudget / kMiB,
-       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials, kMaxTexSrgb,
-       kMaxTexLinear);
+       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials, kMaxTextures);
 
   VkDevice device = m_ctx->device();
 
@@ -101,7 +99,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
 
   // Create shader interface
-  if (!m_interface.init(device, kMaxTexSrgb, kMaxTexLinear)) {
+  if (!m_interface.init(device, kMaxTextures)) {
     LOGE("Failed to initialize shader interface");
     shutdown();
     return false;
@@ -152,12 +150,11 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
 
   m_resources.materials().bindMaterialTable(m_scene.materialBuffer(),
                                             m_scene.materialCapacity());
-  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 
   // Create a 1x1 default white texture and material
   // TOOD: use job system worker instead of hardcoding 0
   if (!m_resources.materials().createDefaultMaterial(
-          m_uploads.staticRecorder(2))) {
+          m_uploads.staticRecorder(0))) {
     LOGE("Failed to create the default material");
     shutdown();
     return false;
@@ -312,9 +309,8 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
   m_scene.bind(cmd, m_interface, m_frames.currentFrameIndex());
-  m_resources.materials().bindTextureTables(cmd, m_interface.pipelineLayout(),
-                                            1);
-  PROFILE_CPU_INC_DESCRIPTOR_BINDS(2);
+  m_resources.materials().bindTextureTable(cmd, m_interface.pipelineLayout(),
+                                           1);
 
   // TODO: sort by mesh, material and stream directly into the uploader
   // without building vectors per batch
@@ -482,7 +478,7 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
 #ifndef NDEBUG
     DebugUBO dbg{};
-    dbg.view = 0;
+    dbg.view = 1;
     m_scene.setDebug(dbg);
 #endif
   }
@@ -587,12 +583,6 @@ Renderer::createMaterial(const MaterialSystem::MaterialDescription &desc) {
   return m_resources.materials().createMaterial(m_uploads.staticRecorder(0),
                                                 desc);
 }
-
-// uint32_t createMaterialFromTexture(TextureHandle albedo) {
-//   MaterialSystem::MaterialDescription desc{};
-//   desc.baseColor = albedo;
-//   return createMaterial(desc);
-// }
 
 bool Renderer::beginUpload(uint32_t frameIndex) {
   return m_uploads.beginFrame(frameIndex);

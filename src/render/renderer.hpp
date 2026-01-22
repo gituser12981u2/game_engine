@@ -126,12 +126,10 @@ public:
   MeshHandle createMesh(const engine::MeshData &mesh);
   [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
 
-  // Materials
+  uint32_t createMaterial(const MaterialSystem::MaterialDescription &desc);
+
   TextureHandle loadTextureFromFile(const std::string &path, bool flipY,
                                     MaterialSystem::TextureUsage usage);
-
-  uint32_t createMaterial(const MaterialSystem::MaterialDescription &desc);
-  uint32_t createMaterialFromTexture(TextureHandle albedo);
 
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);

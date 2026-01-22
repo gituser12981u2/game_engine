@@ -82,30 +82,29 @@ bool buildGltfSceneGpu(Renderer &renderer, const std::string &gltfPath,
     desc.baseColorFactor = m.baseColorFactor;
     desc.emissiveFactor = m.emissiveFactor;
 
-    desc.metallic = m.metallicFactor;
-    desc.roughness = m.roughnessFactor;
-    desc.aoStrength = m.occlusionStrength;
+    desc.metallicFactor = m.metallicFactor;
+    desc.roughnessFactor = m.roughnessFactor;
+    desc.ambientOcclusionFactor = m.occlusionStrength;
     desc.alphaCutoff = m.alphaCutoff;
 
     desc.alphaMode = static_cast<uint32_t>(m.alphaMode);
     desc.doubleSided = m.doubleSided;
 
     // Textures
-    desc.baseColor = loadTexCached(m.baseColorTextureUri,
-                                   MaterialSystem::TextureUsage::BaseColor);
+    desc.baseColorTexture = loadTexCached(m.baseColorTextureUri,
+                                          MaterialSystem::TextureUsage::sRGB);
 
-    desc.emissive = loadTexCached(m.emissiveTextureUri,
-                                  MaterialSystem::TextureUsage::Emissive);
+    desc.emissiveTexture =
+        loadTexCached(m.emissiveTextureUri, MaterialSystem::TextureUsage::sRGB);
 
-    desc.metallicRoughness =
-        loadTexCached(m.metallicRoughnessTextureUri,
-                      MaterialSystem::TextureUsage::MetallicRoughness);
+    desc.metallicRoughnessTexture = loadTexCached(
+        m.metallicRoughnessTextureUri, MaterialSystem::TextureUsage::UNORM);
 
-    desc.occlusion = loadTexCached(m.occlusionTextureUri,
-                                   MaterialSystem::TextureUsage::Occlusion);
+    desc.ambientOcclusionTexture = loadTexCached(
+        m.occlusionTextureUri, MaterialSystem::TextureUsage::UNORM);
 
     desc.normal =
-        loadTexCached(m.normalTextureUri, MaterialSystem::TextureUsage::Normal);
+        loadTexCached(m.normalTextureUri, MaterialSystem::TextureUsage::UNORM);
 
     const uint32_t matId = renderer.createMaterial(desc);
     outGpu.materialIds[materialIdx] = matId;

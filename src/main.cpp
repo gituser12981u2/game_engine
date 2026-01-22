@@ -85,10 +85,8 @@ int main() {
   opt.axis.yUpToZUp = true;
 
   engine::assets::GltfAsset tree;
-  MeshHandle cube{};
 
-  TextureHandle albedo{};
-  TextureHandle mr{};
+  MeshHandle cube{};
   uint32_t material = UINT32_MAX;
 
   {
@@ -100,15 +98,11 @@ int main() {
     cube = app.meshes().cube();
     engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
 
-    albedo = app.renderer().loadTextureFromFile(
-        "assets/terry.jpg", true, MaterialSystem::TextureUsage::BaseColor);
-
-    mr = app.renderer().loadTextureFromFile(
-        "assets/terry.jpg", true, MaterialSystem::TextureUsage::Emissive);
+    TextureHandle albedo = app.renderer().loadTextureFromFile(
+        "assets/terry.jpg", true, MaterialSystem::TextureUsage::sRGB);
 
     MaterialSystem::MaterialDescription desc{};
-    desc.baseColor = albedo;
-    desc.emissiveFactor = {1, 1, 0};
+    desc.baseColorTexture = albedo;
 
     material = app.renderer().createMaterial(desc);
   }

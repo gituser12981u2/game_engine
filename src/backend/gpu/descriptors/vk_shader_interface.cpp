@@ -8,8 +8,7 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkShaderInterface::init(VkDevice device, uint32_t maxTexSrgb,
-                             uint32_t maxTexLinear) {
+bool VkShaderInterface::init(VkDevice device, uint32_t maxTextures) {
   if (device == VK_NULL_HANDLE) {
     std::cerr << "[ShaderInterface] init invalid args\n";
     return false;
@@ -18,8 +17,7 @@ bool VkShaderInterface::init(VkDevice device, uint32_t maxTexSrgb,
   shutdown();
 
   m_device = device;
-  m_maxTexSrgb = maxTexSrgb;
-  m_maxTexLinear = maxTexLinear;
+  m_maxTextures = maxTextures;
 
   // set=0 binding=0: camera UBO per frame
   VkDescriptorSetLayoutBinding cameraBinding{};
@@ -68,35 +66,23 @@ bool VkShaderInterface::init(VkDevice device, uint32_t maxTexSrgb,
     return false;
   }
 
-  // set=1 binding=0: sRgb sampler2D
-  VkDescriptorSetLayoutBinding texSrgb{};
-  texSrgb.binding = 0;
-  texSrgb.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  texSrgb.descriptorCount = m_maxTexSrgb;
-  texSrgb.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-  // set=1 binding=1: linear sampler2D
-  VkDescriptorSetLayoutBinding texLin{};
-  texLin.binding = 1;
-  texLin.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  texLin.descriptorCount = m_maxTexLinear;
-  texLin.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-  std::array<VkDescriptorSetLayoutBinding, 2> materialBindings{texSrgb, texLin};
+  // set=1 binding=0: bindless sampler2D
+  VkDescriptorSetLayoutBinding tex{};
+  tex.binding = 0;
+  tex.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  tex.descriptorCount = m_maxTextures;
+  tex.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
   // Binding flags for descriptor indexing
-  std::array<VkDescriptorBindingFlags, 2> materialBindingFlags{
+  VkDescriptorBindingFlags bindingFlags =
       VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-  };
+      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
 
   VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
   flagsInfo.sType =
       VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-  flagsInfo.bindingCount = static_cast<uint32_t>(materialBindingFlags.size());
-  flagsInfo.pBindingFlags = materialBindingFlags.data();
+  flagsInfo.bindingCount = 1;
+  flagsInfo.pBindingFlags = &bindingFlags;
 
   VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
   materialLayoutInfo.sType =
@@ -104,9 +90,8 @@ bool VkShaderInterface::init(VkDevice device, uint32_t maxTexSrgb,
   materialLayoutInfo.pNext = &flagsInfo;
   materialLayoutInfo.flags =
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-  materialLayoutInfo.bindingCount =
-      static_cast<uint32_t>(materialBindings.size());
-  materialLayoutInfo.pBindings = materialBindings.data();
+  materialLayoutInfo.bindingCount = 1;
+  materialLayoutInfo.pBindings = &tex;
 
   res = vkCreateDescriptorSetLayout(m_device, &materialLayoutInfo, nullptr,
                                     &m_setLayoutMaterial);
@@ -161,6 +146,7 @@ void VkShaderInterface::shutdown() noexcept {
     }
   }
 
+  m_maxTextures = 0;
   m_pipelineLayout = VK_NULL_HANDLE;
   m_setLayoutMaterial = VK_NULL_HANDLE;
   m_setLayoutScene = VK_NULL_HANDLE;

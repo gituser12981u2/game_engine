@@ -1,6 +1,7 @@
 #include "backend/gpu/descriptors/vk_scene_sets.hpp"
 
 #include "backend/gpu/buffers/vk_per_frame_uniform_buffers.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/logging/log.hpp"
 
 #include <array>
@@ -35,7 +36,7 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
   poolSizes[0].descriptorCount = framesInFlight * 2;
 
-  // SSBOS: instance + material table
+  // SSBOs: instance + material table
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   poolSizes[1].descriptorCount = framesInFlight * 2;
 
@@ -153,4 +154,5 @@ void VkSceneSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
   // TODO: use dynamic offset to have on descriptor per object UBO ring buffer
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                           setIndex, 1, &set, 0, nullptr);
+  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 }

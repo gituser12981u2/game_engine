@@ -1,8 +1,7 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout(set = 1, binding = 0) uniform sampler2D g_texSrgb[];
-layout(set = 1, binding = 1) uniform sampler2D g_texLin[];
+layout(set = 1, binding = 0) uniform sampler2D g_tex[];
 
 layout(location = 0) in vec3 vColor;
 layout(location = 1) in vec2 v_uv;
@@ -40,34 +39,29 @@ layout(set = 0, binding = 3) uniform DebugUBO {
 
 const uint kNoTex = 0xFFFFFFFFu;
 
-vec4 sampleSrgb(uint idx, vec2 uv, vec4 fallback) {
+vec4 sampleTex(uint idx, vec2 uv, vec4 fallback) {
   if (idx == kNoTex) return fallback;
-  return texture(g_texSrgb[nonuniformEXT(idx)], uv);
-}
-
-vec4 sampleLin(uint idx, vec2 uv, vec4 fallback) {
-  if (idx == kNoTex) return fallback;
-  return texture(g_texLin[nonuniformEXT(idx)], uv);
+  return texture(g_tex[nonuniformEXT(idx)], uv);
 }
 
 void main() {
   Material m = mats.materials[v_matId];
 
-  // BaseColor (sRGB texture)
-  vec4 baseTex = sampleSrgb(m.tex0.x, v_uv, vec4(1.0));
+  // BaseColor
+  vec4 baseTex = sampleTex(m.tex0.x, v_uv, vec4(1.0));
   vec4 base = baseTex * m.baseColorFactor;
 
-  // MetallicRoughness (linear). gLTF: roughness=G, metallic=B 
-  vec4 mrTex = sampleLin(m.tex0.z, v_uv, vec4(0.0, 1.0, 0.0, 1.0));
+  // MetallicRoughness 
+  vec4 mrTex = sampleTex(m.tex0.z, v_uv, vec4(0.0, 1.0, 0.0, 1.0));
   float roughness = clamp(m.mrAoAlpha.y * mrTex.g, 0.04, 1.0);
   float metallic = clamp(m.mrAoAlpha.x * mrTex.b, 0.0, 1.0);
 
-  // Occlusion (linear): AO=R 
-  vec4 aoTex = sampleLin(m.tex0.w, v_uv, vec4(1.0));
+  // Occlusion (linear) 
+  vec4 aoTex = sampleTex(m.tex0.w, v_uv, vec4(1.0));
   float ao = mix(1.0, aoTex.r, clamp(m.mrAoAlpha.z, 0.0, 1.0));
 
   // Emissive (sRGB)
-  vec3 emissiveTex = sampleSrgb(m.tex1.x, v_uv, vec4(0.0, 0.0, 0.0, 1.0)).rgb;
+  vec3 emissiveTex = sampleTex(m.tex1.x, v_uv, vec4(0.0, 0.0, 0.0, 1.0)).rgb;
   vec3 emissive = emissiveTex * m.emissiveFactor.rgb;
 
   // Alpha 

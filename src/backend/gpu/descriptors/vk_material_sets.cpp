@@ -1,6 +1,7 @@
 #include "backend/gpu/descriptors/vk_material_sets.hpp"
 
 #include "backend/gpu/textures/vk_texture.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/logging/log.hpp"
 
 #include <cstdint>
@@ -8,8 +9,8 @@
 #include <vulkan/vulkan_core.h>
 
 bool VkMaterialSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                          uint32_t maxTexSrgb, uint32_t maxTexLin) {
-  if (layout == VK_NULL_HANDLE || maxTexSrgb == 0 || maxTexLin == 0) {
+                          uint32_t maxTextures) {
+  if (layout == VK_NULL_HANDLE || maxTextures == 0) {
     LOGE("Invalid initlization args");
     return false;
   }
@@ -18,12 +19,11 @@ bool VkMaterialSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   m_device = device;
   m_layout = layout;
-  m_maxSrgb = maxTexSrgb;
-  m_maxLinear = maxTexLin;
+  m_maxTextures = maxTextures;
 
   VkDescriptorPoolSize poolSize{};
   poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  poolSize.descriptorCount = maxTexSrgb + maxTexLin;
+  poolSize.descriptorCount = maxTextures;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -66,56 +66,30 @@ void VkMaterialSets::shutdown() noexcept {
   m_layout = VK_NULL_HANDLE;
   m_set = VK_NULL_HANDLE;
   m_device = VK_NULL_HANDLE;
-  m_maxSrgb = 0;
-  m_maxLinear = 0;
+  m_maxTextures = 0;
 }
 
-static bool writeOne(VkDevice device, VkDescriptorSet set, uint32_t binding,
-                     uint32_t arrayElement, const VkTexture2D &tex) {
-  if (!tex.valid()) {
+bool VkMaterialSets::writeTexture(uint32_t slot, const VkTexture2D &texture) {
+  if (!texture.valid() || slot >= m_maxTextures || m_set == VK_NULL_HANDLE) {
     return false;
   }
 
   VkDescriptorImageInfo imgInfo{};
   imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  imgInfo.imageView = tex.view;
-  imgInfo.sampler = tex.sampler;
+  imgInfo.imageView = texture.view;
+  imgInfo.sampler = texture.sampler;
 
   VkWriteDescriptorSet write{};
   write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  write.dstSet = set;
-  write.dstBinding = binding;
-  write.dstArrayElement = arrayElement;
+  write.dstSet = m_set;
+  write.dstBinding = 0;
+  write.dstArrayElement = slot;
   write.descriptorCount = 1;
   write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
   write.pImageInfo = &imgInfo;
 
-  vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+  vkUpdateDescriptorSets(m_device, 1, &write, 0, nullptr);
   return true;
-}
-
-bool VkMaterialSets::writeSrgb(uint32_t index, const VkTexture2D &tex) {
-  if (m_set == VK_NULL_HANDLE) {
-    return false;
-  }
-
-  if (index >= m_maxSrgb) {
-    return false;
-  }
-
-  return writeOne(m_device, m_set, /*binding=*/0, index, tex);
-}
-
-bool VkMaterialSets::writeLinear(uint32_t index, const VkTexture2D &tex) {
-  if (m_set == VK_NULL_HANDLE) {
-    return false;
-  }
-
-  if (index >= m_maxLinear) {
-    return false;
-  }
-
-  return writeOne(m_device, m_set, /*binding=*/1, index, tex);
 }
 
 void VkMaterialSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
@@ -124,7 +98,7 @@ void VkMaterialSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
     return;
   }
 
-  // TODO: upgrade to dynamic offset
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                           setIndex, 1, &m_set, 0, nullptr);
+  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 }

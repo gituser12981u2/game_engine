@@ -17,9 +17,7 @@
 #include <vulkan/vulkan_core.h>
 
 struct TextureHandle {
-  enum class Table : uint8_t { Srgb, Linear };
   uint32_t id = UINT32_MAX;
-  Table table = Table::Srgb;
 
   [[nodiscard]] bool valid() const noexcept { return id != UINT32_MAX; }
 };
@@ -27,13 +25,8 @@ struct TextureHandle {
 class MaterialSystem {
 public:
   enum class TextureUsage : uint8_t {
-    BaseColor,         // sRGB
-    Emissive,          // sRGB
-    MetallicRoughness, // linear UNORM
-    Occlusion,         // linear UNORM
-    Normal,            // linear UNORM
-    GenericSRGB,       // sRGB
-    GenericLinear      // linear UNORM
+    sRGB,
+    UNORM,
   };
 
   static constexpr uint32_t kInvalidId = UINT32_MAX;
@@ -41,25 +34,23 @@ public:
   struct MaterialDescription {
     glm::vec4 baseColorFactor{1, 1, 1, 1};
     glm::vec3 emissiveFactor{0, 0, 0};
+    float metallicFactor = 0.0F;
+    float roughnessFactor = 1.0F;
+    float ambientOcclusionFactor = 1.0F;
 
-    float metallic = 0.0F;
-    float roughness = 1.0F;
-    float aoStrength = 1.0F;
-    float alphaCutoff = 0.5F;
-
-    std::optional<TextureHandle> baseColor;         // sRGB
-    std::optional<TextureHandle> emissive;          // sRGB
-    std::optional<TextureHandle> metallicRoughness; // linear
-    std::optional<TextureHandle> occlusion;         // linear
-    std::optional<TextureHandle> normal;            // linear
+    std::optional<TextureHandle> baseColorTexture;
+    std::optional<TextureHandle> emissiveTexture;
+    std::optional<TextureHandle> metallicRoughnessTexture;
+    std::optional<TextureHandle> ambientOcclusionTexture;
+    std::optional<TextureHandle> normal;
 
     uint32_t alphaMode = 0;
+    float alphaCutoff = 0.5F;
     bool doubleSided = false;
   };
 
   bool init(VkBackendCtx &ctx, VkDescriptorSetLayout materialSetLayout,
-            uint32_t materialCapacity, uint32_t maxTexSrgb,
-            uint32_t maxTexLinear);
+            uint32_t materialCapacity, uint32_t maxTextures);
   void shutdown() noexcept;
 
   TextureHandle loadTextureFromFile(VkUploadContext::Recorder staticRec,
@@ -78,8 +69,8 @@ public:
 
   bool createDefaultMaterial(VkUploadContext::Recorder staticRec) noexcept;
 
-  void bindTextureTables(VkCommandBuffer cmd, VkPipelineLayout layout,
-                         uint32_t setIndex) const;
+  void bindTextureTable(VkCommandBuffer cmd, VkPipelineLayout layout,
+                        uint32_t setIndex) const;
 
   // Material table (SSBO) is provided by SceneData
   void bindMaterialTable(VkBuffer materialTableBuffer,
@@ -108,7 +99,7 @@ public:
 private:
   [[nodiscard]] static VkFormat formatFor(TextureUsage usage) noexcept;
 
-  TextureHandle storeTextureAndWrite(VkTexture2D &&tex, VkFormat fmt);
+  TextureHandle storeTextureAndWrite(VkTexture2D &&tex);
 
   [[nodiscard]] uint32_t allocMaterialId() noexcept;
 
@@ -118,8 +109,8 @@ private:
   VkTextureUploader m_textureUploader;
   VkMaterialUploader m_materialUploader;
 
-  std::vector<VkTexture2D> m_texSrgb;
-  std::vector<VkTexture2D> m_texLinear;
+  std::vector<VkTexture2D> m_textures;
+  uint32_t m_maxTextures = 0;
   VkMaterialSets m_materialSet;
 
   VkBuffer m_materialTable = VK_NULL_HANDLE; // non-owning

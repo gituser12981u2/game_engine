@@ -2,6 +2,7 @@
 
 #include "backend/gpu/textures/vk_texture.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/assets/stb_image/stb_image_loader.hpp"
 #include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
@@ -35,8 +36,7 @@ uint32_t clampMaterialSsboCapactiy(VkPhysicalDevice physicalDevice,
 
 bool MaterialSystem::init(VkBackendCtx &ctx,
                           VkDescriptorSetLayout materialSetLayout,
-                          uint32_t materialCapacity, uint32_t maxTexSrgb,
-                          uint32_t maxTexLinear) {
+                          uint32_t materialCapacity, uint32_t maxTextures) {
   shutdown();
 
   if (!m_textureUploader.init(ctx)) {
@@ -59,14 +59,14 @@ bool MaterialSystem::init(VkBackendCtx &ctx,
     return false;
   }
 
-  if (!m_materialSet.init(ctx.device(), materialSetLayout, maxTexSrgb,
-                          maxTexLinear)) {
+  if (!m_materialSet.init(ctx.device(), materialSetLayout, maxTextures)) {
     LOGE("Material sets initialization failed");
     shutdown();
     return false;
   }
 
   m_nextMaterialId = 0;
+  m_maxTextures = maxTextures;
   m_defaultMaterial = UINT32_MAX;
 
   return true;
@@ -76,14 +76,11 @@ void MaterialSystem::shutdown() noexcept {
   m_materialSet.shutdown();
 
   // Textures
-  for (auto &texture : m_texSrgb) {
+  for (auto &texture : m_textures) {
     texture.shutdown();
   }
-  for (auto &texture : m_texLinear) {
-    texture.shutdown();
-  }
-  m_texSrgb.clear();
-  m_texLinear.clear();
+  m_textures.clear();
+  m_maxTextures = 0;
 
   m_textureUploader.shutdown();
   m_materialUploader.shutdown();
@@ -103,11 +100,14 @@ void MaterialSystem::shutdown() noexcept {
 
 uint32_t MaterialSystem::allocMaterialId() noexcept {
   if (m_materialTable == VK_NULL_HANDLE || m_materialTableCapacity == 0) {
+    LOGE("MaterialId allocation failed because of improper material table "
+         "setup");
     return UINT32_MAX;
   }
 
   const uint32_t id = m_nextMaterialId++;
   if (id >= m_materialTableCapacity) {
+    LOGE("MaterialId is larger than material table capacity");
     return UINT32_MAX;
   }
 
@@ -116,42 +116,33 @@ uint32_t MaterialSystem::allocMaterialId() noexcept {
 
 VkFormat MaterialSystem::formatFor(TextureUsage usage) noexcept {
   switch (usage) {
-  case TextureUsage::BaseColor:
-  case TextureUsage::Emissive:
-  case TextureUsage::GenericSRGB:
+  case TextureUsage::sRGB:
     return VK_FORMAT_R8G8B8A8_SRGB;
   default:
     return VK_FORMAT_R8G8B8A8_UNORM;
   }
 }
 
-TextureHandle MaterialSystem::storeTextureAndWrite(VkTexture2D &&tex,
-                                                   VkFormat fmt) {
+TextureHandle MaterialSystem::storeTextureAndWrite(VkTexture2D &&tex) {
   if (!tex.valid()) {
+    LOGE("Texture is invalid");
     return {};
   }
 
-  if (fmt == VK_FORMAT_R8G8B8A8_SRGB) {
-    m_texSrgb.push_back(std::move(tex));
-    TextureHandle handle{.id = uint32_t(m_texSrgb.size() - 1),
-                         .table = TextureHandle::Table::Srgb};
-    if (!m_materialSet.writeSrgb(handle.id, m_texSrgb[handle.id])) {
-      LOGE("writeSrgb failed");
-      return {};
-    }
-
-    return handle;
-  }
-
-  m_texLinear.push_back(std::move(tex));
-  TextureHandle handle{.id = uint32_t(m_texLinear.size() - 1),
-                       .table = TextureHandle::Table::Linear};
-  if (!m_materialSet.writeLinear(handle.id, m_texLinear[handle.id])) {
-    LOGE("writeLinear failed");
+  const uint32_t slot = static_cast<uint32_t>(m_textures.size());
+  if (slot >= m_maxTextures) {
+    LOGE("Texture slot is larger than max textures");
     return {};
   }
 
-  return handle;
+  m_textures.push_back(std::move(tex));
+
+  if (!m_materialSet.writeTexture(slot, m_textures[slot])) {
+    LOGE("Write texture failed");
+    return {};
+  }
+
+  return TextureHandle{slot};
 }
 
 TextureHandle
@@ -172,7 +163,7 @@ MaterialSystem::loadTextureFromFile(VkUploadContext::Recorder staticRecorder,
     return {};
   }
 
-  return storeTextureAndWrite(std::move(tex), fmt);
+  return storeTextureAndWrite(std::move(tex));
 }
 
 bool MaterialSystem::uploadTextureFromImage(
@@ -228,28 +219,21 @@ uint32_t MaterialSystem::createMaterial(VkUploadContext::Recorder recorder,
   }
 
   // Resolve textures with defaults
-  const TextureHandle baseColor = desc.baseColor.value_or(m_whiteTexture);
-  const TextureHandle emissive = desc.emissive.value_or(m_blackTexture);
+  const TextureHandle baseColor =
+      desc.baseColorTexture.value_or(m_whiteTexture);
+  const TextureHandle emissive = desc.emissiveTexture.value_or(m_blackTexture);
   const TextureHandle metallicRoughness =
-      desc.metallicRoughness.value_or(m_defaultMetalRough);
-  const TextureHandle occlusion = desc.occlusion.value_or(m_defaultOcclusion);
+      desc.metallicRoughnessTexture.value_or(m_defaultMetalRough);
+  const TextureHandle occlusion =
+      desc.ambientOcclusionTexture.value_or(m_defaultOcclusion);
   const TextureHandle normal = desc.normal.value_or(m_defaultNormal);
-
-  if (baseColor.table != TextureHandle::Table::Srgb ||
-      emissive.table != TextureHandle::Table::Srgb ||
-      metallicRoughness.table != TextureHandle::Table::Linear ||
-      occlusion.table != TextureHandle::Table::Linear ||
-      normal.table != TextureHandle::Table::Linear) {
-    LOGE("Texture table mismatch");
-    return UINT32_MAX;
-  }
 
   MaterialGPU gpu{};
   gpu.baseColorFactor = desc.baseColorFactor;
   gpu.emissiveFactor = {desc.emissiveFactor.x, desc.emissiveFactor.y,
                         desc.emissiveFactor.z, 0.0F};
-  gpu.mrAoAlpha = {desc.metallic, desc.roughness, desc.aoStrength,
-                   desc.alphaCutoff};
+  gpu.mrAoAlpha = {desc.metallicFactor, desc.roughnessFactor,
+                   desc.ambientOcclusionFactor, desc.alphaCutoff};
 
   gpu.tex0.x = baseColor.id;
   gpu.tex1.x = emissive.id;
@@ -273,6 +257,7 @@ bool MaterialSystem::updateMaterialGPU(VkUploadContext::Recorder recorder,
 
 bool MaterialSystem::createDefaultMaterial(
     VkUploadContext::Recorder staticRecorder) noexcept {
+
   // BaseColor default: white (sRGB)
   {
     VkTexture2D tex;
@@ -283,8 +268,8 @@ bool MaterialSystem::createDefaultMaterial(
       LOGE("Default white texture creation failed");
       return false;
     }
-    m_whiteTexture =
-        storeTextureAndWrite(std::move(tex), VK_FORMAT_R8G8B8A8_SRGB);
+
+    m_whiteTexture = storeTextureAndWrite(std::move(tex));
     if (m_whiteTexture.id == UINT32_MAX) {
       return false;
     }
@@ -299,8 +284,8 @@ bool MaterialSystem::createDefaultMaterial(
       LOGE("Default black texture creation failed");
       return false;
     }
-    m_blackTexture =
-        storeTextureAndWrite(std::move(tex), VK_FORMAT_R8G8B8A8_SRGB);
+
+    m_blackTexture = storeTextureAndWrite(std::move(tex));
     if (m_blackTexture.id == UINT32_MAX) {
       return false;
     }
@@ -315,8 +300,8 @@ bool MaterialSystem::createDefaultMaterial(
                                        VK_FORMAT_R8G8B8A8_UNORM, 1, 1, tex)) {
       LOGE("Default MetallicRoughness texture creation failed");
     }
-    m_defaultMetalRough =
-        storeTextureAndWrite(std::move(tex), VK_FORMAT_R8G8B8A8_UNORM);
+
+    m_defaultMetalRough = storeTextureAndWrite(std::move(tex));
     if (m_defaultMetalRough.id == UINT32_MAX) {
       return false;
     }
@@ -331,8 +316,8 @@ bool MaterialSystem::createDefaultMaterial(
       LOGE("Default ambient occlusion creation failed");
       return false;
     }
-    m_defaultOcclusion =
-        storeTextureAndWrite(std::move(tex), VK_FORMAT_R8G8B8A8_UNORM);
+
+    m_defaultOcclusion = storeTextureAndWrite(std::move(tex));
     if (m_defaultOcclusion.id == UINT32_MAX) {
       return false;
     }
@@ -347,8 +332,8 @@ bool MaterialSystem::createDefaultMaterial(
       LOGE("Default normal creation failed");
       return false;
     }
-    m_defaultNormal =
-        storeTextureAndWrite(std::move(tex), VK_FORMAT_R8G8B8A8_UNORM);
+
+    m_defaultNormal = storeTextureAndWrite(std::move(tex));
     if (m_defaultNormal.id == UINT32_MAX) {
       return false;
     }
@@ -365,16 +350,16 @@ bool MaterialSystem::createDefaultMaterial(
     MaterialSystem::MaterialDescription desc{};
     desc.baseColorFactor = {1, 1, 1, 1};
     desc.emissiveFactor = {0, 0, 0};
-    desc.metallic = 0.0F;
-    desc.roughness = 1.0F;
-    desc.aoStrength = 1.0F;
+    desc.metallicFactor = 0.0F;
+    desc.roughnessFactor = 1.0F;
+    desc.ambientOcclusionFactor = 1.0F;
     desc.alphaCutoff = 0.5F;
 
-    desc.baseColor = m_whiteTexture;
-    desc.emissive = m_blackTexture;
+    desc.baseColorTexture = m_whiteTexture;
+    desc.emissiveTexture = m_blackTexture;
     desc.normal = m_defaultNormal;
-    desc.metallicRoughness = m_defaultMetalRough;
-    desc.occlusion = m_defaultOcclusion;
+    desc.metallicRoughnessTexture = m_defaultMetalRough;
+    desc.ambientOcclusionTexture = m_defaultOcclusion;
 
     m_defaultMaterial = createMaterial(staticRecorder, desc);
     return m_defaultMaterial != UINT32_MAX;
@@ -383,9 +368,9 @@ bool MaterialSystem::createDefaultMaterial(
   return true;
 }
 
-void MaterialSystem::bindTextureTables(VkCommandBuffer cmd,
-                                       VkPipelineLayout layout,
-                                       uint32_t setIndex) const {
+void MaterialSystem::bindTextureTable(VkCommandBuffer cmd,
+                                      VkPipelineLayout layout,
+                                      uint32_t setIndex) const {
   m_materialSet.bind(cmd, layout, setIndex);
 }
 

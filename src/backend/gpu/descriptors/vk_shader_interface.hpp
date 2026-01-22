@@ -30,7 +30,7 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, uint32_t maxTexSrgb, uint32_t maxTexLinear);
+  bool init(VkDevice device, uint32_t maxTextures);
   void shutdown() noexcept;
 
   [[nodiscard]] VkDescriptorSetLayout setLayoutScene() const noexcept {
@@ -47,10 +47,7 @@ public:
     return m_pipelineLayout != VK_NULL_HANDLE;
   }
 
-  [[nodiscard]] uint32_t maxTexSrgb() const noexcept { return m_maxTexSrgb; }
-  [[nodiscard]] uint32_t maxTexLinear() const noexcept {
-    return m_maxTexLinear;
-  }
+  [[nodiscard]] uint32_t maxTextures() const noexcept { return m_maxTextures; }
 
 private:
   VkDevice m_device = VK_NULL_HANDLE;                         // non-owning
@@ -58,6 +55,5 @@ private:
   VkDescriptorSetLayout m_setLayoutMaterial = VK_NULL_HANDLE; // owning
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;         // owning
 
-  uint32_t m_maxTexSrgb = 0;
-  uint32_t m_maxTexLinear = 0;
+  uint32_t m_maxTextures = 0;
 };
