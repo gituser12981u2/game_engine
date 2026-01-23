@@ -7,42 +7,48 @@
 #include <array>
 #include <cstdint>
 #include <fmt/format.h>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                       const VkPerFrameUniformBuffers &cameraBufs,
-                       const VkPerFrameUniformBuffers &debugBufs,
+                       const VkPerFrameUniformBuffers &sceneBufs,
                        VkBuffer instanceBuffer,
                        VkDeviceSize instanceFrameStrideBytes,
                        VkBuffer materialBuffer,
                        VkDeviceSize materialTableBytes) {
   if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE ||
-      !cameraBufs.valid() || !debugBufs.valid() ||
-      instanceBuffer == VK_NULL_HANDLE || instanceFrameStrideBytes == 0 ||
-      materialBuffer == VK_NULL_HANDLE || materialTableBytes == 0) {
+      !sceneBufs.valid() || instanceBuffer == VK_NULL_HANDLE ||
+      instanceFrameStrideBytes == 0 || materialBuffer == VK_NULL_HANDLE ||
+      materialTableBytes == 0) {
     LOGE("Initialization arguments invalid");
+    return false;
+  }
+
+  const uint32_t framesInFlight = sceneBufs.frameCount();
+  if (framesInFlight == 0) {
+    LOGE("sceneBufs has 0 frames");
     return false;
   }
 
   shutdown();
 
   m_device = device;
+  m_framesInFlight = framesInFlight;
 
-  const uint32_t framesInFlight = cameraBufs.frameCount();
-
+  // UBO descriptors: scene[frames] = frames
+  // SSBO descriptors: instance[frames] + material[1] = frames + 1
   std::array<VkDescriptorPoolSize, 2> poolSizes{};
 
-  // UBOs: camera + debug
   poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  poolSizes[0].descriptorCount = framesInFlight * 2;
+  poolSizes[0].descriptorCount = framesInFlight;
 
-  // SSBOs: instance + material table
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  poolSizes[1].descriptorCount = framesInFlight * 2;
+  poolSizes[1].descriptorCount = framesInFlight + 1;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.maxSets = framesInFlight;
+  poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+  poolInfo.maxSets = 1;
   poolInfo.poolSizeCount = (uint32_t)poolSizes.size();
   poolInfo.pPoolSizes = poolSizes.data();
 
@@ -53,20 +59,30 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
     return false;
   }
 
-  std::vector<VkDescriptorSetLayout> layouts(framesInFlight, layout);
-
   VkDescriptorSetAllocateInfo allocInfo{};
   allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   allocInfo.descriptorPool = m_pool;
-  allocInfo.descriptorSetCount = framesInFlight;
-  allocInfo.pSetLayouts = layouts.data();
+  allocInfo.descriptorSetCount = 1;
+  allocInfo.pSetLayouts = &layout;
 
-  m_sets.resize(framesInFlight);
-  res = vkAllocateDescriptorSets(m_device, &allocInfo, m_sets.data());
+  res = vkAllocateDescriptorSets(m_device, &allocInfo, &m_set);
   if (res != VK_SUCCESS) {
-    LOGE("Descriptor sets allocation failed");
+    LOGE("vkAllocateDescriptorSets failed: {}", fmt::underlying(res));
     shutdown();
     return false;
+  }
+
+  std::vector<VkDescriptorBufferInfo> sceneInfos(framesInFlight);
+  std::vector<VkDescriptorBufferInfo> instanceInfos(framesInFlight);
+
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    sceneInfos[i].buffer = sceneBufs.buffer(i).handle();
+    sceneInfos[i].offset = 0;
+    sceneInfos[i].range = sceneBufs.stride();
+
+    instanceInfos[i].buffer = instanceBuffer;
+    instanceInfos[i].offset = VkDeviceSize(i) * instanceFrameStrideBytes;
+    instanceInfos[i].range = instanceFrameStrideBytes;
   }
 
   // Global material table
@@ -75,60 +91,37 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   materialInfo.offset = 0;
   materialInfo.range = materialTableBytes;
 
-  // Write set 0 bindings for each frame
-  for (uint32_t i = 0; i < framesInFlight; ++i) {
-    VkDescriptorBufferInfo uboInfo{};
-    uboInfo.buffer = cameraBufs.buffer(i).handle();
-    uboInfo.offset = 0;
-    uboInfo.range = cameraBufs.stride();
+  std::array<VkWriteDescriptorSet, 3> writes{};
 
-    VkDescriptorBufferInfo debugInfo{};
-    debugInfo.buffer = debugBufs.buffer(i).handle();
-    debugInfo.offset = 0;
-    debugInfo.range = debugBufs.stride();
+  // binding 0: SceneUBO[]
+  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[0].dstSet = m_set;
+  writes[0].dstBinding = 0;
+  writes[0].dstArrayElement = 0;
+  writes[0].descriptorCount = framesInFlight;
+  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  writes[0].pBufferInfo = sceneInfos.data();
 
-    VkDescriptorBufferInfo instanceInfo{};
-    instanceInfo.buffer = instanceBuffer;
-    instanceInfo.offset = VkDeviceSize(i) * instanceFrameStrideBytes;
-    instanceInfo.range = instanceFrameStrideBytes;
+  // binding 1: InstanceSSBO[]
+  writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[1].dstSet = m_set;
+  writes[1].dstBinding = 1;
+  writes[1].dstArrayElement = 0;
+  writes[1].descriptorCount = framesInFlight;
+  writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  writes[1].pBufferInfo = instanceInfos.data();
 
-    std::array<VkWriteDescriptorSet, 4> writes{};
+  // binding 2: MaterialSSBO
+  writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[2].dstSet = m_set;
+  writes[2].dstBinding = 2;
+  writes[2].dstArrayElement = 0;
+  writes[2].descriptorCount = 1;
+  writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  writes[2].pBufferInfo = &materialInfo;
 
-    // binding 0: camera UBO
-    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].dstSet = m_sets[i];
-    writes[0].dstBinding = 0;
-    writes[0].descriptorCount = 1;
-    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[0].pBufferInfo = &uboInfo;
-
-    // binding 1: instance SSBO
-    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[1].dstSet = m_sets[i];
-    writes[1].dstBinding = 1;
-    writes[1].descriptorCount = 1;
-    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    writes[1].pBufferInfo = &instanceInfo;
-
-    // binding 2: material table SSBO
-    writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[2].dstSet = m_sets[i];
-    writes[2].dstBinding = 2;
-    writes[2].descriptorCount = 1;
-    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    writes[2].pBufferInfo = &materialInfo;
-
-    // binding 3: debug UBO
-    writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[3].dstSet = m_sets[i];
-    writes[3].dstBinding = 3;
-    writes[3].descriptorCount = 1;
-    writes[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[3].pBufferInfo = &debugInfo;
-
-    vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
-                           nullptr);
-  }
+  vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
+                         nullptr);
 
   return true;
 }
@@ -139,20 +132,19 @@ void VkSceneSets::shutdown() noexcept {
   }
 
   m_pool = VK_NULL_HANDLE;
-  m_sets.clear();
+  m_set = VK_NULL_HANDLE;
+  m_framesInFlight = 0;
   m_device = VK_NULL_HANDLE;
 }
 
 void VkSceneSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
-                       uint32_t setIndex, uint32_t frameIndex) const {
-  if (frameIndex >= m_sets.size()) {
+                       uint32_t setIndex) const {
+  if (m_set == VK_NULL_HANDLE) {
     return;
   }
 
-  VkDescriptorSet set = m_sets[frameIndex];
-
   // TODO: use dynamic offset to have on descriptor per object UBO ring buffer
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                          setIndex, 1, &set, 0, nullptr);
+                          setIndex, 1, &m_set, 0, nullptr);
   PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 }

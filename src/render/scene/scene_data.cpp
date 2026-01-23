@@ -8,6 +8,7 @@
 #include "engine/camera/camera_ubo.hpp"
 #include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
+#include "render/scene/scene_ubo.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -41,7 +42,7 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     return false;
   }
 
-  if (!initCameraBuffers(ctx.allocator(), framesInFlight)) {
+  if (!initSceneBuffers(ctx.allocator(), framesInFlight)) {
     shutdown();
     return false;
   }
@@ -53,11 +54,6 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
   }
 
   if (!initMaterialBuffer(ctx.allocator(), requestedMaxMaterials)) {
-    shutdown();
-    return false;
-  }
-
-  if (!initDebugBuffers(ctx.allocator(), framesInFlight)) {
     shutdown();
     return false;
   }
@@ -84,9 +80,9 @@ bool SceneData::queryDeviceLimits(VkPhysicalDevice physicalDevice) {
   return true;
 }
 
-bool SceneData::initCameraBuffers(VmaAllocator allocator,
-                                  uint32_t framesInFlight) {
-  if (!m_cameraBufs.init(allocator, framesInFlight, sizeof(CameraUBO))) {
+bool SceneData::initSceneBuffers(VmaAllocator allocator,
+                                 uint32_t framesInFlight) {
+  if (!m_sceneBufs.init(allocator, framesInFlight, sizeof(SceneUBO))) {
     std::cerr << "[SceneData] Failed to init camera UBO buffers\n";
     return false;
   }
@@ -167,15 +163,10 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
   return true;
 }
 
-bool SceneData::initDebugBuffers(VmaAllocator allocator,
-                                 uint32_t framesInFlight) {
-  return m_debugBufs.init(allocator, framesInFlight, sizeof(DebugUBO));
-}
-
 bool SceneData::initDescriptorSets(VkDevice device,
                                    const VkShaderInterface &interface) {
-  if (!m_sets.init(device, interface.setLayoutScene(), m_cameraBufs,
-                   m_debugBufs, m_instanceBuf.handle(), m_instanceFrameStride,
+  if (!m_sets.init(device, interface.setLayoutScene(), m_sceneBufs,
+                   m_instanceBuf.handle(), m_instanceFrameStride,
                    m_materialBuf.handle(), m_materialTableBytes)) {
     std::cerr << "[SceneData] Failed to init scene descriptor sets\n";
     return false;
@@ -185,10 +176,9 @@ bool SceneData::initDescriptorSets(VkDevice device,
 
 void SceneData::shutdown() noexcept {
   m_sets.shutdown();
-  m_debugBufs.shutdown();
   m_materialBuf.shutdown();
   m_instanceBuf.shutdown();
-  m_cameraBufs.shutdown();
+  m_sceneBufs.shutdown();
 
   m_instanceFrameStride = 0;
   m_maxInstancesPerFrame = 0;
@@ -202,27 +192,26 @@ bool SceneData::update(uint32_t frameIndex, const CameraUBO &camera) {
     return false;
   }
 
-  if (!m_cameraBufs.update(frameIndex, &camera, sizeof(CameraUBO))) {
-    LOGE("Camera UBO update failed");
-    return false;
-  }
+  SceneUBO scene{};
+  scene.camera = camera;
+  scene.debug = m_debug;
 
-  if (!m_debugBufs.update(frameIndex, &m_debug, sizeof(DebugUBO))) {
-    LOGE("Debug UBO update failed");
+  if (!m_sceneBufs.update(frameIndex, &scene, sizeof(SceneUBO))) {
+    LOGE("Scene UBO update failed");
     return false;
   }
 
   return true;
 }
 
-void SceneData::bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
-                     uint32_t frameIndex) const {
+void SceneData::bind(VkCommandBuffer cmd,
+                     const VkShaderInterface &interface) const {
   if (!m_initiailized) {
     return;
   }
 
   // set 0
-  m_sets.bind(cmd, interface.pipelineLayout(), 0, frameIndex);
+  m_sets.bind(cmd, interface.pipelineLayout(), 0);
 }
 
 InstanceUploadResult

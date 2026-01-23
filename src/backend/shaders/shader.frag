@@ -9,6 +9,19 @@ layout(location = 2) flat in uint v_matId;
 
 layout(location = 0) out vec4 outColor;
 
+struct DebugUBO {
+  uint view;
+  uint flags;
+  float value0;
+  float value1;
+};
+
+layout(set = 0, binding = 0, std140) uniform SceneUBO {
+  mat4 view;
+  mat4 proj;
+  DebugUBO dbg;
+} g_scene[];
+
 // Material table
 // 80 bytes per material
 struct Material {
@@ -30,12 +43,11 @@ layout(set = 0, binding = 2, std430) readonly buffer MaterialSSBO {
   Material materials[];
 } mats;
 
-layout(set = 0, binding = 3) uniform DebugUBO {
-  uint view;
-  uint flags;
-  float value0;
-  float value1;
-} dbg;
+layout(push_constant) uniform Push {
+  uint frameIndex;
+  uint baseInstance;
+  uint materialId;
+} push;
 
 const uint kNoTex = 0xFFFFFFFFu;
 
@@ -45,6 +57,9 @@ vec4 sampleTex(uint idx, vec2 uv, vec4 fallback) {
 }
 
 void main() {
+  uint f = push.frameIndex;
+  DebugUBO dbg = g_scene[nonuniformEXT(f)].dbg;
+
   Material m = mats.materials[v_matId];
 
   // BaseColor

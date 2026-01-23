@@ -33,8 +33,7 @@ public:
   void shutdown() noexcept;
 
   bool update(uint32_t frameIndex, const CameraUBO &camera);
-  void bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
-            uint32_t frameIndex) const;
+  void bind(VkCommandBuffer cmd, const VkShaderInterface &interface) const;
 
   InstanceUploadResult uploadInstances(VkUploadContext::Recorder recorder,
                                        uint32_t frameIndex,
@@ -64,17 +63,15 @@ public:
   void setDebug(const DebugUBO &debug) { m_debug = debug; }
 
 private:
-  bool initCameraBuffers(VmaAllocator allocator, uint32_t framesInFlight);
+  bool initSceneBuffers(VmaAllocator allocator, uint32_t framesInFlight);
   bool queryDeviceLimits(VkPhysicalDevice physicalDevice);
   bool initInstanceBuffer(VmaAllocator allocator, uint32_t framesInFlight,
                           uint32_t requestedMaxInstancesPerFrame);
   bool initMaterialBuffer(VmaAllocator allocator,
                           uint32_t requestedMaxMaterials);
-  bool initDebugBuffers(VmaAllocator allocator, uint32_t framesInFlight);
   bool initDescriptorSets(VkDevice device, const VkShaderInterface &interface);
 
-  VkPerFrameUniformBuffers m_cameraBufs; // sizeof(CameraUBO) per frame
-
+  VkPerFrameUniformBuffers m_sceneBufs;
   VkDeviceSize m_maxStorageBufferRange = 0;
 
   VkBufferObj m_materialBuf; // device-local storage buffer (global)
@@ -85,7 +82,6 @@ private:
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
 
-  VkPerFrameUniformBuffers m_debugBufs;
   DebugUBO m_debug = {};
 
   VkSceneSets m_sets; // set 0 bindings

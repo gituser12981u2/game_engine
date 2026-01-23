@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -303,6 +304,7 @@ bool VkDeviceCtx::createLogicalDevice() {
   VkPhysicalDeviceVulkan12Features enVk12{};
   enVk12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
   enVk12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+  enVk12.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
   enVk12.descriptorBindingPartiallyBound = VK_TRUE;
   enVk12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
   enVk12.runtimeDescriptorArray = hasRuntimeArray ? VK_TRUE : VK_FALSE;

@@ -99,7 +99,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
 
   // Create shader interface
-  if (!m_interface.init(device, kMaxTextures)) {
+  if (!m_interface.init(device, framesInFlight, kMaxTextures)) {
     LOGE("Failed to initialize shader interface");
     shutdown();
     return false;
@@ -312,7 +312,7 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   scissor.extent = extent;
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  m_scene.bind(cmd, m_interface, m_frames.currentFrameIndex());
+  m_scene.bind(cmd, m_interface);
   m_resources.materials().bindTextureTable(cmd, m_interface.pipelineLayout(),
                                            1);
 

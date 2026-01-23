@@ -30,7 +30,7 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device, uint32_t maxTextures);
+  bool init(VkDevice device, uint32_t framesInFlight, uint32_t maxTextures);
   void shutdown() noexcept;
 
   [[nodiscard]] VkDescriptorSetLayout setLayoutScene() const noexcept {
