@@ -99,15 +99,15 @@ int main() {
     }
 
     cube = app.meshes().cube();
-    engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
+    engine::assets::loadGltf(app.renderer(), "assets/tree2.glb", tree, opt);
 
     TextureHandle albedo = app.renderer().loadTextureFromFile(
         "assets/terry.jpg", true, MaterialSystem::TextureUsage::sRGB);
 
     MaterialSystem::MaterialDescription desc{};
-    desc.baseColorTexture = albedo;
+    // desc.baseColorTexture = albedo;
     desc.metallicFactor = 0.0F;
-    desc.roughnessFactor = 0.5F;
+    desc.roughnessFactor = 0.0F;
 
     material = app.renderer().createMaterial(desc);
   }
@@ -128,7 +128,7 @@ int main() {
 
     DirectionalLight sun{};
     sun.directionWS_illuminanceLux =
-        glm::normalize(glm::vec4(0.3F, 0.2F, -1.0F, 30'000.0F));
+        glm::normalize(glm::vec4(0.0F, 0.0F, -1.0F, 30'000.0F));
     sun.colorLinear_pad = glm::vec4(1.0F, 1.0F, 1.0F, 0.0F);
     app.renderer().addDirectionalLight(sun);
 
@@ -136,7 +136,7 @@ int main() {
     p.positionWS = glm::vec3(-3.1, 0, 0);
     p.radius = 6.0F;
     p.colorLinear = glm::vec3(1.0F, 0.8F, 0.6F);
-    p.lumens = 800.0F;
+    p.lumens = 1800.0F;
     app.renderer().addPointLight(p);
 
     DrawItem cubeA{};

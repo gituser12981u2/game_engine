@@ -40,7 +40,7 @@
 static constexpr VkDeviceSize kMiB = 1024ULL * 1024ULL;
 
 // 8 MiB
-static constexpr VkDeviceSize kUploadStaticBudget = 8ULL * kMiB;
+static constexpr VkDeviceSize kUploadStaticBudget = 64ULL * kMiB;
 
 // 2 MiB
 static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;

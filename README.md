@@ -29,17 +29,18 @@ The focus of this game engine is to make a game playable on all devices with lit
     - [x] Albedos (start of PBR)
     - [x] Diffuse option
 - [x] material SSBO (PBR) 
-- [ ] gITF imports
+- [x] gITF imports
     - [x] mesh import
     - [x] base texture/material
-    - [ ] normals
+    - [x] normals
     - [x] other PBR
-- [ ] lighting
+- [x] lighting
 - [x] PBR API for non imports 
 - [x] Vulkan Memory Allocator (VMA) refactor 
 - [ ] Mipmaps
 - [ ] Depth pre-pass 
 - [ ] Forward+ lighting
+- [ ] offscreen intermediate pass
 
 ## MVP 2
 - [ ] Editor
