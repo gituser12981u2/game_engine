@@ -1,4 +1,5 @@
 #include "gltf_cpu_loader.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cgltf.h>
 #include <cstddef>
@@ -8,9 +9,11 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/quaternion_float.hpp>
+#include <glm/ext/quaternion_geometric.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
@@ -102,23 +105,12 @@ static void readVecN(const cgltf_accessor *acc, int n,
   }
 }
 
-static std::string baseColorUri(const cgltf_material *material) {
-  if (material == nullptr) {
+static std::string textureUri(const cgltf_texture_view &view) {
+  if (view.texture == nullptr || view.texture->image == nullptr) {
     return {};
   }
 
-  // TODO: add roughness
-  const cgltf_pbr_metallic_roughness &pbr = material->pbr_metallic_roughness;
-  if (pbr.base_color_texture.texture != nullptr) {
-    return {};
-  };
-
-  const cgltf_texture *tex = pbr.base_color_texture.texture;
-  if (tex == nullptr || tex->image == nullptr) {
-    return {};
-  }
-
-  const cgltf_image *img = tex->image;
+  const cgltf_image *img = view.texture->image;
   if (img->uri == nullptr) {
     return {};
   }
@@ -179,8 +171,34 @@ static void loadMaterials(const cgltf_data *data, GltfSceneCpu &out,
         static_cast<std::uint32_t>(out.materials.size());
 
     GltfMaterialCpu m{};
-    m.baseColorTextureUri = baseColorUri(mat);
+
+    m.baseColorTextureUri =
+        textureUri(mat->pbr_metallic_roughness.base_color_texture);
+    m.metallicRoughnessTextureUri =
+        textureUri(mat->pbr_metallic_roughness.metallic_roughness_texture);
+    m.normalTextureUri = textureUri(mat->occlusion_texture);
+    m.emissiveTextureUri = textureUri(mat->emissive_texture);
+
     m.baseColorFactor = baseColorFactor(mat);
+    m.emissiveFactor =
+        glm::vec3(mat->emissive_factor[0], mat->emissive_factor[1],
+                  mat->emissive_factor[2]);
+
+    m.metallicFactor = mat->pbr_metallic_roughness.metallic_factor;
+    m.roughnessFactor = mat->pbr_metallic_roughness.roughness_factor;
+
+    m.occlusionStrength = mat->occlusion_texture.scale;
+    m.doubleSided = (mat->double_sided != 0);
+
+    if (mat->alpha_mode == cgltf_alpha_mode_mask) {
+      m.alphaMode = GltfAlphaMode::Mask;
+    } else if (mat->alpha_mode == cgltf_alpha_mode_blend) {
+      m.alphaMode = GltfAlphaMode::Blend;
+    } else {
+      m.alphaMode = GltfAlphaMode::Opaque;
+    }
+
+    m.alphaCutoff = mat->alpha_cutoff;
 
     out.materials.push_back(m);
     materialMap[mat] = outIdx;
@@ -193,6 +211,7 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
                                    GltfSceneCpu &out,
                                    PrimitiveMap &primitiveMap) {
   const cgltf_accessor *posAcc = nullptr;
+  const cgltf_accessor *nrmAcc = nullptr;
   const cgltf_accessor *uvAcc = nullptr;
   const cgltf_accessor *colAcc = nullptr;
 
@@ -202,6 +221,10 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
 
     if (a.type == cgltf_attribute_type_position) {
       posAcc = a.data;
+    }
+
+    if (a.type == cgltf_attribute_type_normal) {
+      nrmAcc = a.data;
     }
 
     if (a.type == cgltf_attribute_type_texcoord && a.index == 0) {
@@ -225,9 +248,18 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
 
   // Read arrays
   std::vector<float> posF;
+  std::vector<float> nrmF;
   std::vector<float> uvF;
   std::vector<float> colF;
   readVecN(posAcc, 3, posF);
+
+  if (nrmAcc != nullptr) {
+    if (nrmAcc->type != cgltf_type_vec3) {
+      LOGE("NORMAL not vec3; ignoring");
+    } else {
+      readVecN(nrmAcc, 3, nrmF);
+    }
+  }
 
   if (uvAcc != nullptr) {
     if (uvAcc->type != cgltf_type_vec2) {
@@ -277,6 +309,13 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
       }
     }
 
+    // Default normals
+    vert.normal = {0.0F, 0.0F, 1.0F};
+    if (!nrmF.empty()) {
+      vert.normal = {nrmF[(vertexIdx * 3) + 0], nrmF[(vertexIdx * 3) + 1],
+                     nrmF[(vertexIdx * 3) + 2]};
+    }
+
     // Default UV
     vert.uv = {0.0F, 0.0F};
     if (!uvF.empty()) {
@@ -299,6 +338,45 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
       meshData.indices[static_cast<size_t>(indexIndex)] =
           static_cast<std::uint32_t>(
               cgltf_accessor_read_index(primitive->indices, indexIndex));
+    }
+  }
+
+  // Generate normals if missing
+  if (nrmF.empty()) {
+    std::vector<glm::vec3> acc(meshData.vertices.size(), glm::vec3(0.0F));
+
+    auto addTri = [&](uint32_t i0, uint32_t i1, uint32_t i2) {
+      const glm::vec3 p0 = meshData.vertices[i0].pos;
+      const glm::vec3 p1 = meshData.vertices[i1].pos;
+      const glm::vec3 p2 = meshData.vertices[i2].pos;
+      glm::vec3 n = glm::cross(p1 - p0, p2 - p0);
+      acc[i0] += n;
+      acc[i1] += n;
+      acc[i2] += n;
+    };
+
+    if (!meshData.indices.empty()) {
+      for (size_t i = 0; i + 2 < meshData.indices.size(); i += 3) {
+        addTri(meshData.indices[i], meshData.indices[i + 1],
+               meshData.indices[i + 2]);
+      }
+    } else {
+      // non indexed triangles assumed to be in order
+      for (size_t i = 0; i + 2 < meshData.vertices.size(); i += 3) {
+        addTri((uint32_t)i, (uint32_t)i + 1, (uint32_t)i + 2);
+      }
+    }
+
+    for (size_t i = 0; i < meshData.vertices.size(); ++i) {
+      glm::vec3 n = acc[i];
+      float len2 = glm::dot(n, n);
+      if (len2 > 1e-20F) {
+        n = glm::normalize(n);
+      } else {
+        n = {0.0F, 0.0F, 1.0F};
+      }
+
+      meshData.vertices[i].normal = n;
     }
   }
 

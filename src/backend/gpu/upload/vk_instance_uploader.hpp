@@ -13,18 +13,14 @@ struct InstanceUploadResult {
   explicit operator bool() const noexcept { return instanceCount != 0; }
 };
 
-class VkInstanceUploader {
-public:
-  bool init();
-  void shutdown() noexcept;
+namespace InstanceUploader {
 
-  // TODO: make cursorInstances multi threaded for parallelized
-  // batching/instance writes
-  InstanceUploadResult uploadMat4Instances(VkUploadContext::Recorder recorder,
-                                           VkBuffer instanceBuffer,
-                                           VkDeviceSize frameBaseBytes,
-                                           VkDeviceSize frameStrideBytes,
-                                           uint32_t maxInstancesPerFrame,
-                                           uint32_t &cursorInstances,
-                                           std::span<const glm::mat4> models);
-};
+// TODO: make cursorInstances multi threaded for parallelized
+// batching/instance writes
+InstanceUploadResult
+uploadMat4Instances(VkUploadContext::Recorder recorder, VkBuffer instanceBuffer,
+                    VkDeviceSize frameBaseBytes, VkDeviceSize frameStrideBytes,
+                    uint32_t maxInstancesPerFrame, uint32_t &cursorInstances,
+                    std::span<const glm::mat4> models);
+
+} // namespace InstanceUploader

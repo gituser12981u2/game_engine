@@ -8,6 +8,8 @@
 #include "render/renderer.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
+#include "render/scene/lights_gpu.hpp"
+#include "render/scene/scene_ubo.hpp"
 
 #include <GLFW/glfw3.h>
 #include <cmath>
@@ -15,6 +17,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/geometric.hpp>
 #include <iostream>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -80,14 +83,13 @@ int main() {
   CameraController controller(app.window(), &camera);
   controller.enableCursorCapture(true);
 
-  // engine::assets::GltfLoadOptions opt{};
-  // opt.flipTexcoordV = true;
-  // opt.axis.yUpToZUp = true;
-  //
-  // engine::assets::GltfAsset tree;
-  MeshHandle cube{};
+  engine::assets::GltfLoadOptions opt{};
+  opt.flipTexcoordV = true;
+  opt.axis.yUpToZUp = true;
 
-  TextureHandle texture{};
+  engine::assets::GltfAsset tree;
+
+  MeshHandle cube{};
   uint32_t material = UINT32_MAX;
 
   {
@@ -97,16 +99,23 @@ int main() {
     }
 
     cube = app.meshes().cube();
-    // engine::assets::loadGltf(app.renderer(), "assets/tree.glb", tree, opt);
+    engine::assets::loadGltf(app.renderer(), "assets/tree2.glb", tree, opt);
 
-    texture = app.renderer().createTextureFromFile("assets/terry.jpg", true);
-    material = app.renderer().createMaterialFromTexture(texture);
+    TextureHandle albedo = app.renderer().loadTextureFromFile(
+        "assets/terry.jpg", true, MaterialSystem::TextureUsage::sRGB);
+
+    MaterialSystem::MaterialDescription desc{};
+    // desc.baseColorTexture = albedo;
+    desc.metallicFactor = 0.0F;
+    desc.roughnessFactor = 0.0F;
+
+    material = app.renderer().createMaterial(desc);
   }
 
   std::vector<DrawItem> draw;
-  const uint32_t cubeCount = 10'000;
-  draw.reserve(cubeCount);
-  // draw.reserve(tree.drawItems.size() + 2);
+  // const uint32_t cubeCount = 10'000;
+  // draw.reserve(cubeCount);
+  draw.reserve(tree.drawItems.size() + 2);
   // draw.reserve(2);
 
   app.run([&](float dt) {
@@ -117,21 +126,34 @@ int main() {
     const float t = (float)glfwGetTime();
     draw.clear();
 
-    // DrawItem cubeA{};
-    // cubeA.mesh = cube;
-    // cubeA.material = material;
-    // cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
-    // draw.push_back(cubeA);
-    //
-    // DrawItem cubeB{};
-    // cubeB.mesh = cube;
-    // cubeB.material = material;
-    // cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
-    // draw.push_back(cubeB);
-    //
-    // draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
+    DirectionalLight sun{};
+    sun.directionWS_illuminanceLux =
+        glm::normalize(glm::vec4(0.0F, 0.0F, -1.0F, 30'000.0F));
+    sun.colorLinear_pad = glm::vec4(1.0F, 1.0F, 1.0F, 0.0F);
+    app.renderer().addDirectionalLight(sun);
 
-    pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
+    PointLightGPU p{};
+    p.positionWS = glm::vec3(-3.1, 0, 0);
+    p.radius = 6.0F;
+    p.colorLinear = glm::vec3(1.0F, 0.8F, 0.6F);
+    p.lumens = 1800.0F;
+    app.renderer().addPointLight(p);
+
+    DrawItem cubeA{};
+    cubeA.mesh = cube;
+    cubeA.material = material;
+    cubeA.model = engine::makeModel({-3, 0, 0}, {0, 0, t});
+    draw.push_back(cubeA);
+
+    DrawItem cubeB{};
+    cubeB.mesh = cube;
+    cubeB.material = material;
+    cubeB.model = engine::makeModel({+3, 0, 0}, {0, 0, -t});
+    draw.push_back(cubeB);
+
+    draw.insert(draw.end(), tree.drawItems.begin(), tree.drawItems.end());
+
+    // pushCubeGrid(draw, cube, material, cubeCount, 2.5F, t);
 
     (void)app.renderer().drawFrame(app.presenter(), draw);
   });

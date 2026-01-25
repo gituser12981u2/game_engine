@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <utility>
-#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkMaterialSets {
@@ -26,22 +25,21 @@ public:
     m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
     m_pool = std::exchange(other.m_pool, VK_NULL_HANDLE);
     m_layout = std::exchange(other.m_layout, VK_NULL_HANDLE);
-    m_sets = std::move(other.m_sets);
+    m_set = std::move(other.m_set);
 
     return *this;
   }
 
   bool init(VkDevice device, VkDescriptorSetLayout layout,
-            uint32_t maxMaterials);
+            uint32_t maxTextures);
   void shutdown() noexcept;
 
-  // TODO: change name to allocateBaseColorMaterial and then add
-  // allocatePbrMaterial
-  uint32_t allocateForTexture(const VkTexture2D &tex);
+  bool writeTexture(uint32_t slot, const VkTexture2D &texture);
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
-            uint32_t setIndex, uint32_t materialIndex) const;
+            uint32_t setIndex) const;
 
+  [[nodiscard]] VkDescriptorSet set() const noexcept { return m_set; }
   [[nodiscard]] VkDescriptorSetLayout layout() const noexcept {
     return m_layout;
   }
@@ -50,5 +48,7 @@ private:
   VkDevice m_device = VK_NULL_HANDLE;              // non-owning
   VkDescriptorPool m_pool = VK_NULL_HANDLE;        // non-owning
   VkDescriptorSetLayout m_layout = VK_NULL_HANDLE; // non-owning
-  std::vector<VkDescriptorSet> m_sets;
+  VkDescriptorSet m_set = VK_NULL_HANDLE;
+
+  uint32_t m_maxTextures = 0; // non-owning
 };

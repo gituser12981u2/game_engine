@@ -5,6 +5,7 @@
 #include "backend/gpu/textures/vk_texture_utils.hpp"
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,16 +23,17 @@ bool VkTextureUploader::init(VkBackendCtx &ctx) {
 void VkTextureUploader::shutdown() noexcept { m_ctx = nullptr; }
 
 bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
-                                    const void *rgbaPixels, uint32_t width,
-                                    uint32_t height, VkTexture2D &out,
+                                    const void *rgbaPixels, VkFormat fmt,
+                                    uint32_t width, uint32_t height,
+                                    VkTexture2D &out,
                                     VkPipelineStageFlags finalStage) {
   if (!recorder) {
-    std::cerr << "[TextureUpload] Invalid recorder\n";
+    LOGE("Recorder is invalid");
     return false;
   }
 
   if (rgbaPixels == nullptr || width == 0 || height == 0) {
-    std::cerr << "[TextureUpload] Invalid pixels/size\n";
+    LOGE("Pixels/size are invalid");
     return false;
   }
 
@@ -41,9 +43,7 @@ bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
 
   VkStagingAlloc stageAlloc = recorder.allocStaging(size, /*alignment=*/16);
   if (!stageAlloc) {
-    std::cerr
-        << "[TextureUpload] Out of staging space (increase per-frame budget "
-           "or flush earlier)\n";
+    LOGE("Out of staging space");
     return false;
   }
 
@@ -54,11 +54,10 @@ bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
 
   out.shutdown();
 
-  // TODO: check for VK_FORMAT_R8G8B8A8_UNORM
-  if (!out.image.init2D(
-          m_ctx->allocator(), width, height, VK_FORMAT_R8G8B8A8_SRGB,
-          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-          VK_IMAGE_TILING_OPTIMAL)) {
+  if (!out.image.init2D(m_ctx->allocator(), width, height, fmt,
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                            VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_IMAGE_TILING_OPTIMAL)) {
     std::cerr << "[TextureUpload] Failed to create device-local image\n";
     return false;
   }
@@ -74,13 +73,14 @@ bool VkTextureUploader::uploadRGBA8(VkUploadContext::Recorder recorder,
 
   out.device = device;
 
-  if (!vkCreateTextureView(device, out.image.handle(), VK_FORMAT_R8G8B8A8_SRGB,
-                           out.view)) {
+  if (!vkCreateTextureView(device, out.image.handle(), fmt, out.view)) {
+    LOGE("vkCreateTextureView failed");
     out.shutdown();
     return false;
   }
 
   if (!vkCreateTextureSampler(device, out.sampler)) {
+    LOGE("vkCreateTextureSampler failed");
     out.shutdown();
     return false;
   }

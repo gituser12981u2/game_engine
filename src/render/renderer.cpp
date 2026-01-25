@@ -13,8 +13,10 @@
 #include "engine/mesh/mesh_data.hpp"
 
 #include "render/rendergraph/swapchain_targets.hpp"
+#include "render/resources/material_system.hpp"
 #include "render/resources/mesh_gpu.hpp"
 #include "render/resources/mesh_store.hpp"
+#include "render/scene/debug_ubo.hpp"
 #include "render/scene/push_constants.hpp"
 
 #include "util/scope_exit.hpp"
@@ -38,13 +40,17 @@
 static constexpr VkDeviceSize kMiB = 1024ULL * 1024ULL;
 
 // 8 MiB
-static constexpr VkDeviceSize kUploadStaticBudget = 8ULL * kMiB;
+static constexpr VkDeviceSize kUploadStaticBudget = 64ULL * kMiB;
 
 // 2 MiB
 static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;
 
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
+
+static constexpr uint32_t kRequestedMaxLightsPerFrame = 1024U;
+
+static constexpr uint32_t kMaxTextures = 8192;
 
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
                     uint32_t framesInFlight, const std::string &vertSpvPath,
@@ -73,10 +79,11 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   LOGI("Renderer initialized: framesInFlight={} | threadCount: {} | shaders: "
        "vert='{}' frag='{}' "
        "| "
-       "uploadMiB: static={} frame={} | caps: instances={} materials={}",
+       "uploadMiB: static={} frame={} | caps: instances={} materials={} "
+       "Textures={}",
        framesInFlight, m_jobs->threadCount(), vertSpvPath, fragSpvPath,
        kUploadStaticBudget / kMiB, kUploadFrameBudget / kMiB,
-       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials);
+       kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials, kMaxTextures);
 
   VkDevice device = m_ctx->device();
 
@@ -94,7 +101,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
 
   // Create shader interface
-  if (!m_interface.init(device)) {
+  if (!m_interface.init(device, framesInFlight, kMaxTextures)) {
     LOGE("Failed to initialize shader interface");
     shutdown();
     return false;
@@ -116,7 +123,6 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
   LOGI("Main render pass initialized");
 
-  // TODO: use job system workers instead of hard setting to 1 thread
   if (!m_uploads.init(*m_ctx, m_framesInFlight, kUploadStaticBudget,
                       kUploadFrameBudget, m_jobs->threadCount())) {
     LOGE("Failed to initialize upload manager");
@@ -124,14 +130,9 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
-  if (!m_uploads.beginStatic()) {
-    LOGE("Failed to begin upload frame");
-    shutdown();
-    return false;
-  }
-
   if (!m_scene.init(*m_ctx, m_framesInFlight, m_interface,
-                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials)) {
+                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials,
+                    kRequestedMaxLightsPerFrame)) {
     LOGE("Failed to initialize scene data");
     shutdown();
     return false;
@@ -146,19 +147,7 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   m_resources.materials().bindMaterialTable(m_scene.materialBuffer(),
                                             m_scene.materialCapacity());
 
-  // Create a 1x1 default white texture and material
-  // TOOD: use job system worker instead of hardcoding 0
-  if (!m_resources.materials().createDefaultMaterial(
-          m_uploads.staticRecorder(2))) {
-    LOGE("Failed to create the default material");
-    shutdown();
-    return false;
-  }
-  LOGD("Default material created");
-
-  // Submit + wait for default material
-  if (!m_uploads.flushStatic(false)) {
-    LOGE("Failed to flush static uploads");
+  if (!createDefaultMaterial()) {
     shutdown();
     return false;
   }
@@ -211,6 +200,29 @@ void Renderer::shutdown() noexcept {
 
   m_vertPath.clear();
   m_fragPath.clear();
+}
+
+bool Renderer::createDefaultMaterial() noexcept {
+  if (!m_uploads.beginStatic()) {
+    LOGE("Failed to begin upload frame");
+    return false;
+  }
+
+  // Create a 1x1 default white texture and material
+  // TOOD: use job system worker instead of hardcoding 0
+  if (!m_resources.materials().createDefaultMaterial(
+          m_uploads.staticRecorder(0))) {
+    return false;
+  }
+  LOGD("Default material created");
+
+  // Submit + wait for default material
+  if (!m_uploads.flushStatic(false)) {
+    LOGE("Failed to flush static uploads");
+    return false;
+  }
+
+  return true;
 }
 
 void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
@@ -303,8 +315,9 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   scissor.extent = extent;
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  m_scene.bind(cmd, m_interface, m_frames.currentFrameIndex());
-  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
+  m_scene.bind(cmd, m_interface);
+  m_resources.materials().bindTextureTable(cmd, m_interface.pipelineLayout(),
+                                           1);
 
   // TODO: sort by mesh, material and stream directly into the uploader
   // without building vectors per batch
@@ -335,7 +348,9 @@ BatchMap Renderer::buildBatches(std::span<const DrawItem> items) const {
       continue;
     }
 
-    uint32_t mat = m_resources.materials().resolveMaterial(item.material);
+    uint32_t mat = (item.material != UINT32_MAX)
+                       ? item.material
+                       : m_resources.materials().defaultMaterial();
     batches[BatchKey{.mesh = item.mesh, .material = mat}].push_back(item.model);
   }
 
@@ -371,17 +386,14 @@ void Renderer::drawBatches(VkCommandBuffer cmd, uint32_t frameIndex,
     const uint32_t instanceCount = instanceUpload.instanceCount;
     PROFILE_CPU_ADD_INSTANCES(instanceCount);
 
-    m_resources.materials().bindMaterial(cmd, m_interface.pipelineLayout(), 1,
-                                         key.material);
-    PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
-
     DrawPushConstants pushConstants{};
     pushConstants.baseInstance = instanceUpload.baseInstance;
     pushConstants.materialId = key.material;
 
     vkCmdPushConstants(cmd, m_interface.pipelineLayout(),
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(DrawPushConstants),
-                       &pushConstants);
+                       VK_SHADER_STAGE_VERTEX_BIT |
+                           VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0, sizeof(DrawPushConstants), &pushConstants);
 
     VkDeviceSize vertBufOffset = 0;
     VkBuffer vertBuf = mesh->vertex.handle();
@@ -469,7 +481,19 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   {
     PROFILE_CPU_SCOPE(CpuProfiler::Stat::UpdatePerFrameUBO);
+
+    VkUploadContext::Recorder recorder = m_uploads.frameRecorder(0);
+    if (recorder) {
+      (void)m_scene.commitLights(recorder, frameIndex);
+    }
+
     (void)m_scene.update(frameIndex, m_cameraUbo);
+
+#ifndef NDEBUG
+    DebugUBO dbg{};
+    dbg.view = 0;
+    m_scene.setDebug(dbg);
+#endif
   }
 
   VkCommandBuffer cmd = m_commands.buffers()[frameIndex];
@@ -558,40 +582,19 @@ const MeshGpu *Renderer::get(MeshHandle handle) const {
   return m_resources.meshes().get(handle);
 }
 
-TextureHandle Renderer::createTextureFromFile(const std::string &path,
-                                              bool flipY) {
-
-  return m_resources.materials().createTextureFromFile(
-      m_uploads.staticRecorder(2), path, flipY);
-}
-
-uint32_t Renderer::createMaterialFromTexture(TextureHandle handle) {
+TextureHandle
+Renderer::loadTextureFromFile(const std::string &path, bool flipY,
+                              MaterialSystem::TextureUsage usage) {
   // TODO: make logic for if static or frame recorder
-  LOGI("Creating Material from texture");
-  return m_resources.materials().createMaterialFromTexture(
-      m_uploads.staticRecorder(2), handle);
+  return m_resources.materials().loadTextureFromFile(
+      m_uploads.staticRecorder(0), path, flipY, usage);
 }
 
-uint32_t Renderer::createMaterialFromBaseColorFactor(const glm::vec4 &factor) {
+uint32_t
+Renderer::createMaterial(const MaterialSystem::MaterialDescription &desc) {
   // TODO: make logic for if static or frame recorder
-  return m_resources.materials().createMaterialFromBaseColorFactor(
-      m_uploads.staticRecorder(2), factor);
-}
-
-bool Renderer::createTextureFromImage(const engine::ImageData &img,
-                                      VkTexture2D &outTex) {
-  return m_resources.materials().createTextureFromImage(
-      m_uploads.staticRecorder(2), img, outTex);
-}
-
-void Renderer::setActiveMaterial(uint32_t materialIndex) {
-  m_resources.materials().setActiveMaterial(materialIndex);
-}
-
-bool Renderer::updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu) {
-  // TODO: make logic for if static or frame recorder
-  return m_resources.materials().updateMaterialGPU(m_uploads.staticRecorder(3),
-                                                   materialId, gpu);
+  return m_resources.materials().createMaterial(m_uploads.staticRecorder(0),
+                                                desc);
 }
 
 bool Renderer::beginUpload(uint32_t frameIndex) {

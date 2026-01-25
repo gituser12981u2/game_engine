@@ -2,10 +2,10 @@
 
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstddef>
 #include <cstring>
-#include <iostream>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 
@@ -21,19 +21,18 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(
     VkUploadContext::Recorder recorder, const void *data, VkDeviceSize size,
     VkBufferUsageFlags finalUsage, VkBufferObj &outBuffer) {
   if (!recorder) {
-    std::cerr << "[BufferUploader] Invalid recorder\n";
+    LOGE("Recorder is invalid");
     return false;
   }
 
   if (data == nullptr || size == 0) {
-    std::cerr << "[Uploader] Invalid data or size\n";
+    LOGE("Data or size is invalid");
     return false;
   }
 
   VkStagingAlloc stageAlloc = recorder.allocStaging(size);
   if (!stageAlloc) {
-    std::cerr << "[Uploader] Out of staging space (increase per-frame budget "
-                 "or flush earlier)\n";
+    LOGE("Out of staging space");
     return false;
   }
 
@@ -47,7 +46,7 @@ bool VkBufferUploader::uploadToDeviceLocalBuffer(
   if (!outBuffer.init(m_allocator, size,
                       finalUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                       VkBufferObj::MemUsage::GpuOnly)) {
-    std::cerr << "[Uploader] Failed to create device-local buffer\n";
+    LOGE("Device-local buffer creation failed");
     return false;
   }
 

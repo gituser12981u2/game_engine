@@ -10,12 +10,13 @@
 #include "render/rendergraph/main_pass.hpp"
 #include "render/rendergraph/swapchain_targets.hpp"
 
-#include "render/resources/material_gpu.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
 #include "render/resources/resource_store.hpp"
 
+#include "render/scene/lights_gpu.hpp"
 #include "render/scene/scene_data.hpp"
+#include "render/scene/scene_ubo.hpp"
 #include "render/upload/upload_manager.hpp"
 
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
@@ -121,27 +122,30 @@ public:
 
   void setCameraUBO(const CameraUBO &ubo) { m_cameraUbo = ubo; }
 
+  // Uploading
+  bool beginUpload(uint32_t frameIndex);
+  bool endUpload(bool wait);
+
+  bool beginStaticUploads();
+  bool endStaticUploads(bool wait);
+
   // Meshes
   MeshHandle createMesh(const engine::Vertex *vertices, uint32_t vertexCount,
                         const uint32_t *indices, uint32_t indexCount);
   MeshHandle createMesh(const engine::MeshData &mesh);
   [[nodiscard]] const MeshGpu *get(MeshHandle handle) const;
 
-  // Materials
-  TextureHandle createTextureFromFile(const std::string &path, bool flipY);
-  bool createTextureFromImage(const engine::ImageData &img,
-                              VkTexture2D &outTex);
+  // Materials/Textures
+  uint32_t createMaterial(const MaterialSystem::MaterialDescription &desc);
+  TextureHandle loadTextureFromFile(const std::string &path, bool flipY,
+                                    MaterialSystem::TextureUsage usage);
 
-  uint32_t createMaterialFromTexture(TextureHandle textureHandle);
-  uint32_t createMaterialFromBaseColorFactor(const glm::vec4 &factor);
-  void setActiveMaterial(uint32_t materialIndex);
-  bool updateMaterialGPU(uint32_t materialId, const MaterialGPU &gpu);
-
-  bool beginUpload(uint32_t frameIndex);
-  bool endUpload(bool wait);
-
-  bool beginStaticUploads();
-  bool endStaticUploads(bool wait);
+  // Lights
+  void clearLights() { m_scene.clearLights(); }
+  void addDirectionalLight(DirectionalLight &light) {
+    m_scene.addDirectionalLight(light);
+  }
+  void addPointLight(PointLightGPU &light) { m_scene.addPointLight(light); }
 
   // TODO: make PImpl
 private:

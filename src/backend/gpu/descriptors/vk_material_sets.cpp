@@ -1,16 +1,17 @@
 #include "backend/gpu/descriptors/vk_material_sets.hpp"
 
 #include "backend/gpu/textures/vk_texture.hpp"
+#include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cstdint>
-#include <iostream>
+#include <fmt/format.h>
 #include <vulkan/vulkan_core.h>
 
 bool VkMaterialSets::init(VkDevice device, VkDescriptorSetLayout layout,
-                          uint32_t maxMaterials) {
-  if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE ||
-      maxMaterials == 0) {
-    std::cerr << "[MaterialSets] Invalid init args\n";
+                          uint32_t maxTextures) {
+  if (layout == VK_NULL_HANDLE || maxTextures == 0) {
+    LOGE("Invalid initlization args");
     return false;
   }
 
@@ -18,26 +19,39 @@ bool VkMaterialSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   m_device = device;
   m_layout = layout;
+  m_maxTextures = maxTextures;
 
   VkDescriptorPoolSize poolSize{};
   poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  poolSize.descriptorCount = maxMaterials;
+  poolSize.descriptorCount = maxTextures;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.maxSets = maxMaterials;
+  poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+  poolInfo.maxSets = 1;
   poolInfo.poolSizeCount = 1;
   poolInfo.pPoolSizes = &poolSize;
 
   VkResult res = vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_pool);
   if (res != VK_SUCCESS) {
-    std::cerr << "[MaterialSets] vkCreateDescriptorPool failed: " << res
-              << "\n";
+    LOGE("vkCreateDescriptorPool failed: {}", fmt::underlying(res));
     shutdown();
     return false;
   }
 
-  m_sets.reserve(maxMaterials);
+  VkDescriptorSetAllocateInfo allocInfo{};
+  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  allocInfo.descriptorPool = m_pool;
+  allocInfo.descriptorSetCount = 1;
+  allocInfo.pSetLayouts = &m_layout;
+
+  res = vkAllocateDescriptorSets(m_device, &allocInfo, &m_set);
+  if (res != VK_SUCCESS) {
+    LOGE("vkAllocateDescriptorSets failed: {}", fmt::underlying(res));
+    shutdown();
+    return false;
+  }
+
   return true;
 }
 
@@ -49,65 +63,42 @@ void VkMaterialSets::shutdown() noexcept {
   }
 
   m_pool = VK_NULL_HANDLE;
-  m_sets.clear();
   m_layout = VK_NULL_HANDLE;
+  m_set = VK_NULL_HANDLE;
   m_device = VK_NULL_HANDLE;
+  m_maxTextures = 0;
 }
 
-uint32_t VkMaterialSets::allocateForTexture(const VkTexture2D &tex) {
-  if (m_device == VK_NULL_HANDLE || m_pool == VK_NULL_HANDLE ||
-      m_layout == VK_NULL_HANDLE) {
-    std::cerr << "[MaterialSets] Not initialized\n";
-    return UINT32_MAX;
-  }
-
-  if (!tex.valid()) {
-    std::cerr << "[MaterialSets] Invalid texture\n";
-    return UINT32_MAX;
-  }
-
-  VkDescriptorSet set = VK_NULL_HANDLE;
-  VkDescriptorSetAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  allocInfo.descriptorPool = m_pool;
-  allocInfo.descriptorSetCount = 1;
-  allocInfo.pSetLayouts = &m_layout;
-
-  VkResult res = vkAllocateDescriptorSets(m_device, &allocInfo, &set);
-  if (res != VK_SUCCESS) {
-    std::cerr << "[MaterialSets] vkAllocateDescriptorSets failed: " << res
-              << "\n";
-    return UINT32_MAX;
+bool VkMaterialSets::writeTexture(uint32_t slot, const VkTexture2D &texture) {
+  if (!texture.valid() || slot >= m_maxTextures || m_set == VK_NULL_HANDLE) {
+    return false;
   }
 
   VkDescriptorImageInfo imgInfo{};
   imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  imgInfo.imageView = tex.view;
-  imgInfo.sampler = tex.sampler;
+  imgInfo.imageView = texture.view;
+  imgInfo.sampler = texture.sampler;
 
   VkWriteDescriptorSet write{};
   write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  write.dstSet = set;
+  write.dstSet = m_set;
   write.dstBinding = 0;
+  write.dstArrayElement = slot;
   write.descriptorCount = 1;
   write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
   write.pImageInfo = &imgInfo;
 
   vkUpdateDescriptorSets(m_device, 1, &write, 0, nullptr);
-
-  const uint32_t idx = static_cast<uint32_t>(m_sets.size());
-  m_sets.push_back(set);
-
-  return idx;
+  return true;
 }
 
 void VkMaterialSets::bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
-                          uint32_t setIndex, uint32_t materialIndex) const {
-  if (materialIndex >= m_sets.size()) {
+                          uint32_t setIndex) const {
+  if (m_set == VK_NULL_HANDLE) {
     return;
   }
 
-  VkDescriptorSet set = m_sets[materialIndex];
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                          setIndex, 1, &set, 0, nullptr);
+                          setIndex, 1, &m_set, 0, nullptr);
+  PROFILE_CPU_INC_DESCRIPTOR_BINDS(1);
 }

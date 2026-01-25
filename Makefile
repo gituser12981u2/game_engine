@@ -5,6 +5,16 @@ ENGINE_NAME := quark
 GLSLC ?= glslc
 SHADERS_OUT_DIR := shaders/bin
 
+SHADER_SRC_DIR := src/backend/shaders
+SHADER_INC_DIR := $(SHADER_SRC_DIR)/include
+
+SHADER_VERT := $(SHADER_SRC_DIR)/shader.vert
+SHADER_FRAG := $(SHADER_SRC_DIR)/shader.frag
+SHADER_COMMON := $(SHADER_INC_DIR)/common.glsl
+
+SHADER_VERT_SPV := $(SHADERS_OUT_DIR)/shader.vert.spv
+SHADER_FRAG_SPV := $(SHADERS_OUT_DIR)/shader.frag.spv
+
 # PIN TO A HASH IN A BETTER WAY THAN THIS?
 VCPKG_COMMIT := 11bbc873e00e9e58d4e9dffb30b7a5493a030e0b
 
@@ -86,10 +96,16 @@ format-check:
 	  -print0 | xargs -0 clang-format -n -Werror
 
 # TODO: make obsolete by vulkan's internal API
-shaders:
+shaders: $(SHADER_VERT_SPV) $(SHADER_FRAG_SPV)
+
+$(SHADERS_OUT_DIR):
 	@mkdir -p $(SHADERS_OUT_DIR)
-	@$(GLSLC) src/backend/shaders/shader.vert -o $(SHADERS_OUT_DIR)/shader.vert.spv
-	@$(GLSLC) src/backend/shaders/shader.frag -o $(SHADERS_OUT_DIR)/shader.frag.spv
+
+$(SHADER_VERT_SPV): $(SHADER_VERT) $(SHADER_COMMON) | $(SHADERS_OUT_DIR)
+	@$(GLSLC) -I$(SHADER_INC_DIR) $(SHADER_VERT) -o $@
+
+$(SHADER_FRAG_SPV): $(SHADER_FRAG) $(SHADER_COMMON) | $(SHADERS_OUT_DIR)
+	@$(GLSLC) -I$(SHADER_INC_DIR) $(SHADER_FRAG) -o $@
 
 clean:
 	rm -rf $(BUILD_DIR)

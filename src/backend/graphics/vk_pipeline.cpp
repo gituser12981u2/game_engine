@@ -6,8 +6,8 @@
 
 #include <array>
 #include <cstdint>
+#include <fmt/format.h>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <iostream>
 #include <string>
 #include <unistd.h>
 #include <vulkan/vulkan_core.h>
@@ -30,12 +30,12 @@ bool VkGraphicsPipeline::init(VkDevice device, VkFormat colorFormat,
   VulkanShaderModule fragModule;
 
   if (!createShaderModuleFromFile(m_device, vertSpvPath, vertModule)) {
-    std::cerr << "[Pipeline] Failed to load vertex shader\n";
+    LOGE("Vertex shader loading failed");
     return false;
   }
 
   if (!createShaderModuleFromFile(m_device, fragSpvPath, fragModule)) {
-    std::cerr << "[Pipeline] Failed to load fragment shader\n";
+    LOGE("Fragment shader loading failed");
     return false;
   }
 
@@ -60,7 +60,6 @@ bool VkGraphicsPipeline::init(VkDevice device, VkFormat colorFormat,
     return false;
   }
 
-  std::cout << "[Pipeline] Graphics pipeline created\n";
   return true;
 }
 
@@ -175,8 +174,7 @@ bool VkGraphicsPipeline::createGraphicsPipeline(
   const VkResult res = vkCreateGraphicsPipelines(
       m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline);
   if (res != VK_SUCCESS) {
-    std::cerr << "[Pipeline] vkCreateGraphicsPipelines() failed: " << res
-              << "\n";
+    LOGE("vkCreateGraphicsPipelines() failed: {}", fmt::underlying(res));
     m_graphicsPipeline = VK_NULL_HANDLE;
     return false;
   }

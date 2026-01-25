@@ -4,7 +4,7 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/ext/vector_uint4.hpp>
 
-struct MaterialGPU {
+struct alignas(16) MaterialGPU {
   static constexpr uint32_t kNoTexture = 0xFFFFFFFFU;
 
   glm::vec4 baseColorFactor{1.0F}; // rgba
@@ -26,3 +26,4 @@ struct MaterialGPU {
 
 // multiple of 16 bytes for for std430
 static_assert(sizeof(MaterialGPU) % 16 == 0);
+static_assert(alignof(MaterialGPU) == 16);

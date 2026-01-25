@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <utility>
-#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class VkSceneSets {
@@ -25,30 +24,28 @@ public:
 
     m_device = std::exchange(other.m_device, VK_NULL_HANDLE);
     m_pool = std::exchange(other.m_pool, VK_NULL_HANDLE);
-    m_sets = std::move(other.m_sets);
+    m_set = std::move(other.m_set);
 
     return *this;
   }
 
   bool init(VkDevice device, VkDescriptorSetLayout layout,
-            const VkPerFrameUniformBuffers &uboBufs, VkBuffer instanceBuffer,
+            const VkPerFrameUniformBuffers &sceneBufs, VkBuffer instanceBuffer,
             VkDeviceSize instanceFrameStrideBytes, VkBuffer materialBuffer,
-            VkDeviceSize materialTableBytes);
+            VkDeviceSize materialTableBytes, VkBuffer lightBuffer,
+            VkDeviceSize lightFrameStrideBytes);
   void shutdown() noexcept;
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,
-            uint32_t setIndex, uint32_t frameIndex) const;
+            uint32_t setIndex) const;
 
   [[nodiscard]] bool valid() const noexcept { return m_pool != VK_NULL_HANDLE; }
-  [[nodiscard]] VkDescriptorSet set(uint32_t frameIndex) const noexcept {
-    return m_sets[frameIndex];
-  }
-  [[nodiscard]] uint32_t setCount() const noexcept {
-    return static_cast<uint32_t>(m_sets.size());
-  }
+  [[nodiscard]] VkDescriptorSet set() const noexcept { return m_set; }
 
 private:
   VkDevice m_device = VK_NULL_HANDLE;       // non-owning
   VkDescriptorPool m_pool = VK_NULL_HANDLE; // owning
-  std::vector<VkDescriptorSet> m_sets;
+  VkDescriptorSet m_set = VK_NULL_HANDLE;
+
+  uint32_t m_framesInFlight = 0;
 };

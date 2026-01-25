@@ -125,9 +125,9 @@ private:
   VkStagingAlloc allocStaging(uint32_t frameIndex, VkDeviceSize size,
                               VkDeviceSize alignment);
 
-  void transitionImage(VkCommandBuffer cmd, VkImage image,
-                       VkImageLayout oldLayout, VkImageLayout newLayout,
-                       VkPipelineStageFlags finalStage);
+  static void transitionImage(VkCommandBuffer cmd, VkImage image,
+                              VkImageLayout oldLayout, VkImageLayout newLayout,
+                              VkPipelineStageFlags finalStage);
 
   [[nodiscard]] uint32_t idx(uint32_t frameIndex,
                              uint32_t threadIndex) const noexcept {

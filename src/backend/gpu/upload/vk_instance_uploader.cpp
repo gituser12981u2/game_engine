@@ -1,20 +1,19 @@
 #include "backend/gpu/upload/vk_instance_uploader.hpp"
 
+#include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "engine/logging/log.hpp"
 
 #include <glm/ext/matrix_float4x4.hpp>
-#include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkInstanceUploader::init() { return true; }
+namespace InstanceUploader {
 
-void VkInstanceUploader::shutdown() noexcept {}
-
-InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
-    VkUploadContext::Recorder recorder, VkBuffer instanceBuffer,
-    VkDeviceSize frameBaseBytes, VkDeviceSize frameStrideBytes,
-    uint32_t maxInstancesPerFrame, uint32_t &cursorInstances,
-    std::span<const glm::mat4> models) {
+InstanceUploadResult
+uploadMat4Instances(VkUploadContext::Recorder recorder, VkBuffer instanceBuffer,
+                    VkDeviceSize frameBaseBytes, VkDeviceSize frameStrideBytes,
+                    uint32_t maxInstancesPerFrame, uint32_t &cursorInstances,
+                    std::span<const glm::mat4> models) {
   InstanceUploadResult out{};
   if (!recorder || instanceBuffer == VK_NULL_HANDLE) {
     return out;
@@ -27,7 +26,7 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
   const uint32_t count = static_cast<uint32_t>(models.size());
   if (cursorInstances + count > maxInstancesPerFrame) {
     // TODO: split batch
-    std::cerr << "[InstanceUploader] Instance budget exceeded for frame\n";
+    LOGE("Instance budget exceeded for frame");
     return out;
   }
 
@@ -36,13 +35,13 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
   const VkDeviceSize endBytes =
       VkDeviceSize(cursorInstances + count) * sizeof(glm::mat4);
   if (endBytes > frameStrideBytes) {
-    std::cerr << "[InstanceUploader] exceeds SSBO descriptor range\n";
+    LOGE("SSBO descriptor range exceeded");
     return out;
   }
 
   VkStagingAlloc stageAlloc = recorder.allocStaging(bytes, /*alignment*/ 16);
   if (!stageAlloc) {
-    std::cerr << "[InstanceUploader] allocStaging failed for instances\n";
+    LOGE("allocStaging failed for instances");
     return out;
   }
 
@@ -69,3 +68,5 @@ InstanceUploadResult VkInstanceUploader::uploadMat4Instances(
 
   return out;
 }
+
+} // namespace InstanceUploader

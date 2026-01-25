@@ -3,35 +3,46 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/gpu/buffers/vk_buffer.hpp"
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
+#include "backend/gpu/upload/vk_instance_uploader.hpp"
+#include "backend/gpu/upload/vk_lights_uploader.hpp"
+#include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/profiling/telemetry/telemetry.hpp"
 #include "engine/camera/camera_ubo.hpp"
+#include "engine/logging/log.hpp"
 #include "render/resources/material_gpu.hpp"
+#include "render/scene/lights_gpu.hpp"
+#include "render/scene/scene_ubo.hpp"
 
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <iostream>
+#include <glm/ext/vector_float3.hpp>
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
 bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
                      const VkShaderInterface &interface,
                      uint32_t requestedMaxInstancesPerFrame,
-                     uint32_t requestedMaxMaterials) {
+                     uint32_t requestedMaxMaterials,
+                     uint32_t requestedMaxPointLights) {
   shutdown();
 
   if (framesInFlight == 0) {
-    std::cerr << "[SceneData] framesInFlight must be greater than 0\n";
+    LOGE("framesInFlight must be greater than 0");
     return false;
   }
 
   if (requestedMaxInstancesPerFrame == 0) {
-    std::cerr << "[SceneData] requestedMaxInstancesPerFrame must be > 0\n";
+    LOGE("requestedMaxInstancesPerFrame must be > 0");
     return false;
   }
 
   if (requestedMaxMaterials == 0) {
-    std::cerr << "[SceneData] requestedMaxMaterials must be > 0\n";
+    LOGE("requestedMaxMaterials must be > 0");
     return false;
+  }
+
+  if (requestedMaxPointLights == 0) {
+    LOGE("requestedMaxPointLights must be > 0");
   }
 
   if (!queryDeviceLimits(ctx.physicalDevice())) {
@@ -39,7 +50,7 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     return false;
   }
 
-  if (!initCameraBuffers(ctx.allocator(), framesInFlight)) {
+  if (!initSceneBuffers(ctx.allocator(), framesInFlight)) {
     shutdown();
     return false;
   }
@@ -55,12 +66,16 @@ bool SceneData::init(VkBackendCtx &ctx, uint32_t framesInFlight,
     return false;
   }
 
-  if (!initDescriptorSets(ctx.device(), interface)) {
+  if (!initPointLightBuffer(ctx.allocator(), framesInFlight,
+                            requestedMaxPointLights)) {
     shutdown();
     return false;
   }
 
-  (void)m_instanceUploader.init();
+  if (!initDescriptorSets(ctx.device(), interface)) {
+    shutdown();
+    return false;
+  }
 
   m_initiailized = true;
   return true;
@@ -72,17 +87,17 @@ bool SceneData::queryDeviceLimits(VkPhysicalDevice physicalDevice) {
 
   m_maxStorageBufferRange = props.limits.maxStorageBufferRange;
   if (m_maxStorageBufferRange == 0) {
-    std::cerr << "[SceneData] maxStorageBufferRange is 0\n";
+    LOGE("maxStorageBufferRange is 0");
     return false;
   }
 
   return true;
 }
 
-bool SceneData::initCameraBuffers(VmaAllocator allocator,
-                                  uint32_t framesInFlight) {
-  if (!m_cameraBufs.init(allocator, framesInFlight, sizeof(CameraUBO))) {
-    std::cerr << "[SceneData] Failed to init camera UBO buffers\n";
+bool SceneData::initSceneBuffers(VmaAllocator allocator,
+                                 uint32_t framesInFlight) {
+  if (!m_sceneBufs.init(allocator, framesInFlight, sizeof(SceneUBO))) {
+    LOGE("Camera UBO buffers initialization failed");
     return false;
   }
 
@@ -105,7 +120,7 @@ bool SceneData::initInstanceBuffer(VmaAllocator allocator,
   }
 
   if (m_maxInstancesPerFrame == 0 || wantedStride == 0) {
-    std::cerr << "[SceneData] maxStorageBufferRange too small for instances\n";
+    LOGE("maxStorageBufferRange too small for instances");
     return false;
   }
 
@@ -119,7 +134,7 @@ bool SceneData::initInstanceBuffer(VmaAllocator allocator,
 
   if (!m_instanceBuf.init(allocator, totalBytes, usage,
                           VkBufferObj::MemUsage::GpuOnly, /*mapped*/ false)) {
-    std::cerr << "[SceneData] Failed to create instance SSBO\n";
+    LOGE("Instance SSBO creation failed");
     return false;
   }
 
@@ -143,7 +158,7 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
   }
 
   if (m_materialCapacity == 0 || m_materialTableBytes == 0) {
-    std::cerr << "[SceneData] maxStorageBufferRange too small for materials\n";
+    LOGE("maxStorageBufferRange too small for materials");
     return false;
   }
 
@@ -152,7 +167,7 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
 
   if (!m_materialBuf.init(allocator, m_materialTableBytes, matUsage,
                           VkBufferObj::MemUsage::GpuOnly, /*mapped*/ false)) {
-    std::cerr << "[SceneData] Failed to create instance SSBO\n";
+    LOGE("Material table creation failed");
     return false;
   }
 
@@ -162,28 +177,77 @@ bool SceneData::initMaterialBuffer(VmaAllocator allocator,
   return true;
 }
 
+bool SceneData::initPointLightBuffer(VmaAllocator allocator,
+                                     uint32_t framesInFlight,
+                                     uint32_t requestedMaxPointLights) {
+  m_maxPointLightsPerFrame = requestedMaxPointLights;
+
+  VkDeviceSize wantedStride =
+      VkDeviceSize(m_maxPointLightsPerFrame) * sizeof(PointLightGPU);
+
+  // Clamp to maxStorageBufferRange
+  if (wantedStride > m_maxStorageBufferRange) {
+    m_maxPointLightsPerFrame =
+        static_cast<uint32_t>(m_maxStorageBufferRange / sizeof(PointLightGPU));
+    wantedStride =
+        VkDeviceSize(m_maxPointLightsPerFrame) * sizeof(PointLightGPU);
+  }
+
+  if (m_maxPointLightsPerFrame == 0 || wantedStride == 0) {
+    LOGE("maxStorageBufferRange too small for point lights");
+    return false;
+  }
+
+  m_pointLightFrameStride = wantedStride;
+
+  const VkDeviceSize totalBytes =
+      VkDeviceSize(framesInFlight) * m_pointLightFrameStride;
+
+  const VkBufferUsageFlags usage =
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+  if (!m_pointLightBuf.init(allocator, totalBytes, usage,
+                            VkBufferObj::MemUsage::GpuOnly, /*mapped=*/false)) {
+    LOGE("Point light SSBO creation failed");
+    return false;
+  }
+
+  // PROFILE_UPLOAD_ADD(UploadProfiler::Stat::LightAllocation,
+  //                    static_cast<uint64_t>(totalBytes));
+
+  return true;
+}
+
 bool SceneData::initDescriptorSets(VkDevice device,
                                    const VkShaderInterface &interface) {
-  if (!m_sets.init(device, interface.setLayoutScene(), m_cameraBufs,
+  if (!m_sets.init(device, interface.setLayoutScene(), m_sceneBufs,
                    m_instanceBuf.handle(), m_instanceFrameStride,
-                   m_materialBuf.handle(), m_materialTableBytes)) {
-    std::cerr << "[SceneData] Failed to init scene descriptor sets\n";
+                   m_materialBuf.handle(), m_materialTableBytes,
+                   m_pointLightBuf.handle(), m_pointLightFrameStride)) {
+    LOGE("Scene descriptor initialization failed");
     return false;
   }
   return true;
 }
 
 void SceneData::shutdown() noexcept {
-
-  m_instanceUploader.shutdown();
   m_sets.shutdown();
+
+  m_pointLightBuf.shutdown();
   m_materialBuf.shutdown();
   m_instanceBuf.shutdown();
-  m_cameraBufs.shutdown();
+  m_sceneBufs.shutdown();
+
+  m_pointLightFrameStride = 0;
+  m_maxPointLightsPerFrame = 0;
+  m_pointLightCountThisFrame = 0;
 
   m_instanceFrameStride = 0;
   m_maxInstancesPerFrame = 0;
   m_materialTableBytes = 0;
+
+  m_materialTableBytes = 0;
+  m_materialCapacity = 0;
 
   m_initiailized = false;
 }
@@ -193,22 +257,34 @@ bool SceneData::update(uint32_t frameIndex, const CameraUBO &camera) {
     return false;
   }
 
-  if (!m_cameraBufs.update(frameIndex, &camera, sizeof(CameraUBO))) {
-    std::cerr << "[PerFrameData] Failed to update camera UBO\n";
+  SceneUBO scene{};
+  scene.camera = camera;
+  scene.debug = m_debug;
+
+  scene.pointLightCount = m_pointLightCountThisFrame;
+  scene.dirLightCount = m_dirLightCountThisFrame;
+  scene.dirLights = m_dirLights;
+
+  if (!m_sceneBufs.update(frameIndex, &scene, sizeof(SceneUBO))) {
+    LOGE("Scene UBO update failed");
     return false;
   }
+
+  m_pointLightCountThisFrame = 0;
+  m_dirLightCountThisFrame = 0;
+  m_pointLightsScratch.clear();
 
   return true;
 }
 
-void SceneData::bind(VkCommandBuffer cmd, const VkShaderInterface &interface,
-                     uint32_t frameIndex) const {
+void SceneData::bind(VkCommandBuffer cmd,
+                     const VkShaderInterface &interface) const {
   if (!m_initiailized) {
     return;
   }
 
   // set 0
-  m_sets.bind(cmd, interface.pipelineLayout(), 0, frameIndex);
+  m_sets.bind(cmd, interface.pipelineLayout(), 0);
 }
 
 InstanceUploadResult
@@ -218,7 +294,52 @@ SceneData::uploadInstances(VkUploadContext::Recorder recorder,
   const VkDeviceSize frameBase =
       VkDeviceSize(frameIndex) * m_instanceFrameStride;
 
-  return m_instanceUploader.uploadMat4Instances(
+  return InstanceUploader::uploadMat4Instances(
       recorder, m_instanceBuf.handle(), frameBase, m_instanceFrameStride,
       m_maxInstancesPerFrame, cursorInstances, models);
+}
+
+bool SceneData::uploadPointLights(VkUploadContext::Recorder recorder,
+                                  uint32_t frameIndex,
+                                  std::span<const PointLightGPU> lights) {
+  const VkDeviceSize frameBase =
+      VkDeviceSize(frameIndex) * m_pointLightFrameStride;
+
+  const auto res = LightsUploader::uploadPointLights(
+      recorder, m_pointLightBuf.handle(), frameBase, m_pointLightFrameStride,
+      m_maxPointLightsPerFrame, lights);
+
+  m_pointLightCountThisFrame = res.lightCount;
+  return true;
+}
+
+// TODO: move into its own file
+void SceneData::clearLights() {
+  m_dirLightCountThisFrame = 0;
+  m_pointLightsScratch.clear();
+  m_pointLightCountThisFrame = 0;
+}
+
+void SceneData::addDirectionalLight(const DirectionalLight &light) {
+  if (m_dirLightCountThisFrame >= kMaxDirLights) {
+    LOGE("Direcitonal lights count this frame is higher than kMaxDirLights");
+    return;
+  }
+
+  m_dirLights[m_dirLightCountThisFrame++] = light;
+}
+
+void SceneData::addPointLight(const PointLightGPU &light) {
+  m_pointLightsScratch.push_back(light);
+}
+
+bool SceneData::commitLights(VkUploadContext::Recorder recorder,
+                             uint32_t frameIndex) {
+  if (!m_initiailized) {
+    return false;
+  }
+
+  (void)uploadPointLights(recorder, frameIndex, m_pointLightsScratch);
+
+  return true;
 }

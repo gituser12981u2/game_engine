@@ -14,7 +14,7 @@ public:
   void shutdown() noexcept;
 
   bool uploadRGBA8(
-      VkUploadContext::Recorder recorder, const void *rgbaPixels,
+      VkUploadContext::Recorder recorder, const void *rgbaPixels, VkFormat fmt,
       uint32_t width, uint32_t height, VkTexture2D &out,
       VkPipelineStageFlags finalStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 

@@ -1,87 +1,129 @@
 #include "backend/gpu/descriptors/vk_shader_interface.hpp"
 
+#include "engine/logging/log.hpp"
 #include "render/scene/push_constants.hpp"
 
 #include <array>
 #include <cstdint>
+#include <fmt/format.h>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <iostream>
 #include <vulkan/vulkan_core.h>
 
-bool VkShaderInterface::init(VkDevice device) {
+bool VkShaderInterface::init(VkDevice device, uint32_t framesInFlight,
+                             uint32_t maxTextures) {
   if (device == VK_NULL_HANDLE) {
-    std::cerr << "[ShaderInterface] init invalid args\n";
+    LOGE("Initialization invalid arguments");
     return false;
   }
 
   shutdown();
+
   m_device = device;
+  m_maxTextures = maxTextures;
 
-  // set=0 binding=0: per frame UBO (camera)
-  VkDescriptorSetLayoutBinding uboBinding{};
-  uboBinding.binding = 0;
-  uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  uboBinding.descriptorCount = 1;
-  uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-  // set=0 binding=1: instance SSBO
-  VkDescriptorSetLayoutBinding instanceBinding{};
-  instanceBinding.binding = 1;
-  instanceBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  instanceBinding.descriptorCount = 1;
-  instanceBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-  // set=0 binding=2: material table SSBO
-  VkDescriptorSetLayoutBinding materialBinding{};
-  materialBinding.binding = 2;
-  materialBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  materialBinding.descriptorCount = 1;
-  materialBinding.stageFlags =
+  // set=0 binding=1: scene per frame bindless array
+  VkDescriptorSetLayoutBinding sceneUbo{};
+  sceneUbo.binding = 0;
+  sceneUbo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  sceneUbo.descriptorCount = framesInFlight;
+  sceneUbo.stageFlags =
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  std::array<VkDescriptorSetLayoutBinding, 3> bindings{
-      uboBinding, instanceBinding, materialBinding};
+  // set=0 binding=1: instance SSBO
+  VkDescriptorSetLayoutBinding instanceSsbo{};
+  instanceSsbo.binding = 1;
+  instanceSsbo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  instanceSsbo.descriptorCount = framesInFlight;
+  instanceSsbo.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-  VkDescriptorSetLayoutCreateInfo perFrameInfo{};
-  perFrameInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  perFrameInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-  perFrameInfo.pBindings = bindings.data();
+  // set=0 binding=2: material table SSBO
+  VkDescriptorSetLayoutBinding materialSsbo{};
+  materialSsbo.binding = 2;
+  materialSsbo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  materialSsbo.descriptorCount = 1;
+  materialSsbo.stageFlags =
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  VkResult res = vkCreateDescriptorSetLayout(m_device, &perFrameInfo, nullptr,
+  // set=0 binding=3: point lights SSBO
+  VkDescriptorSetLayoutBinding lightsSsbo{};
+  lightsSsbo.binding = 3;
+  lightsSsbo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  lightsSsbo.descriptorCount = framesInFlight;
+  lightsSsbo.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  std::array<VkDescriptorSetLayoutBinding, 4> sceneBindings{
+      sceneUbo, instanceSsbo, materialSsbo, lightsSsbo};
+
+  std::array<VkDescriptorBindingFlags, 4> sceneFlags{
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+  };
+
+  VkDescriptorSetLayoutBindingFlagsCreateInfo sceneFlagsInfo{};
+  sceneFlagsInfo.sType =
+      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+  sceneFlagsInfo.bindingCount = (uint32_t)sceneFlags.size();
+  sceneFlagsInfo.pBindingFlags = sceneFlags.data();
+
+  VkDescriptorSetLayoutCreateInfo sceneInfo{};
+  sceneInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  sceneInfo.pNext = &sceneFlagsInfo;
+  sceneInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+  sceneInfo.bindingCount = (uint32_t)(sceneBindings.size());
+  sceneInfo.pBindings = sceneBindings.data();
+
+  VkResult res = vkCreateDescriptorSetLayout(m_device, &sceneInfo, nullptr,
                                              &m_setLayoutScene);
-
   if (res != VK_SUCCESS) {
-    std::cerr << "[ShaderInterface] create per-frame set layout failed: " << res
-              << "\n";
+    LOGE("Scene set layout creation failed: {}", fmt::underlying(res));
     shutdown();
     return false;
   }
 
-  // set=1 binding=0: Material sampler2D
-  VkDescriptorSetLayoutBinding textureBinding{};
-  textureBinding.binding = 0;
-  textureBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  textureBinding.descriptorCount = 1;
-  textureBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+  // set=1 binding=0: bindless sampler2D
+  VkDescriptorSetLayoutBinding tex{};
+  tex.binding = 0;
+  tex.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  tex.descriptorCount = m_maxTextures;
+  tex.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  // Binding flags for descriptor indexing
+  VkDescriptorBindingFlags bindingFlags =
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+  VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
+  flagsInfo.sType =
+      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+  flagsInfo.bindingCount = 1;
+  flagsInfo.pBindingFlags = &bindingFlags;
 
   VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
   materialLayoutInfo.sType =
       VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  materialLayoutInfo.pNext = &flagsInfo;
+  materialLayoutInfo.flags =
+      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
   materialLayoutInfo.bindingCount = 1;
-  materialLayoutInfo.pBindings = &textureBinding;
+  materialLayoutInfo.pBindings = &tex;
 
   res = vkCreateDescriptorSetLayout(m_device, &materialLayoutInfo, nullptr,
                                     &m_setLayoutMaterial);
   if (res != VK_SUCCESS) {
-    std::cerr << "[ShaderInterface] create material set layout failed: " << res
-              << "\n";
+    LOGE("Material set layout creation failed");
     shutdown();
     return false;
   }
 
   // Push constant (model matrix)
   VkPushConstantRange pushRange{};
-  pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+  pushRange.stageFlags =
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
   pushRange.offset = 0;
   pushRange.size = sizeof(DrawPushConstants);
 
@@ -98,8 +140,7 @@ bool VkShaderInterface::init(VkDevice device) {
   res = vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr,
                                &m_pipelineLayout);
   if (res != VK_SUCCESS) {
-    std::cerr << "[ShaderInterface] vkCreatePipelineLayout failed: " << res
-              << "\n";
+    LOGE("vkCreatePipelineLayout failed: {}", fmt::underlying(res));
     m_pipelineLayout = VK_NULL_HANDLE;
     return false;
   }
@@ -122,6 +163,7 @@ void VkShaderInterface::shutdown() noexcept {
     }
   }
 
+  m_maxTextures = 0;
   m_pipelineLayout = VK_NULL_HANDLE;
   m_setLayoutMaterial = VK_NULL_HANDLE;
   m_setLayoutScene = VK_NULL_HANDLE;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <sys/types.h>
 #include <utility>
 #include <vulkan/vulkan_core.h>
 
@@ -28,7 +30,7 @@ public:
     return *this;
   }
 
-  bool init(VkDevice device);
+  bool init(VkDevice device, uint32_t framesInFlight, uint32_t maxTextures);
   void shutdown() noexcept;
 
   [[nodiscard]] VkDescriptorSetLayout setLayoutScene() const noexcept {
@@ -45,9 +47,13 @@ public:
     return m_pipelineLayout != VK_NULL_HANDLE;
   }
 
+  [[nodiscard]] uint32_t maxTextures() const noexcept { return m_maxTextures; }
+
 private:
   VkDevice m_device = VK_NULL_HANDLE;                         // non-owning
   VkDescriptorSetLayout m_setLayoutScene = VK_NULL_HANDLE;    // owning
   VkDescriptorSetLayout m_setLayoutMaterial = VK_NULL_HANDLE; // owning
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;         // owning
+
+  uint32_t m_maxTextures = 0;
 };

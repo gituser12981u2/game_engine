@@ -4,9 +4,12 @@
 #include "engine/mesh/vertex.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <glm/ext/quaternion_geometric.hpp>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <utility>
 #include <vector>
 
@@ -48,10 +51,20 @@ public:
                const std::array<glm::vec2, 4> &uvs = quadUvs01()) {
     const std::uint32_t base = static_cast<std::uint32_t>(vertices.size());
 
-    vertices.push_back(Vertex{.pos = a, .color = color, .uv = uvs[0]});
-    vertices.push_back(Vertex{.pos = b, .color = color, .uv = uvs[1]});
-    vertices.push_back(Vertex{.pos = c, .color = color, .uv = uvs[2]});
-    vertices.push_back(Vertex{.pos = d, .color = color, .uv = uvs[3]});
+    // normals
+    glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+    if (!std::isfinite(n.x) || !std::isfinite(n.y) || !std::isfinite(n.z)) {
+      n = {0.0F, 0.0F, 1.0F};
+    }
+
+    vertices.push_back(
+        Vertex{.pos = a, .normal = n, .color = color, .uv = uvs[0]});
+    vertices.push_back(
+        Vertex{.pos = b, .normal = n, .color = color, .uv = uvs[1]});
+    vertices.push_back(
+        Vertex{.pos = c, .normal = n, .color = color, .uv = uvs[2]});
+    vertices.push_back(
+        Vertex{.pos = d, .normal = n, .color = color, .uv = uvs[3]});
 
     addQuadIndices(base);
   }
