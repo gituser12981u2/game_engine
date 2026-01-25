@@ -34,7 +34,7 @@ public:
     glm::vec4 baseColorFactor{1, 1, 1, 1};
     glm::vec3 emissiveFactor{0, 0, 0};
     float metallicFactor = 0.0F;
-    float roughnessFactor = 1.0F;
+    float roughnessFactor = 0.5F;
     float ambientOcclusionFactor = 1.0F;
 
     std::optional<TextureHandle> baseColorTexture;

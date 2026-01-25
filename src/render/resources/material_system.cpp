@@ -287,7 +287,7 @@ bool MaterialSystem::createDefaultMaterial(
   // roughness = 1 in G, metallic = 0 in B. R unused, set 0. A = 255.
   {
     VkTexture2D tex;
-    static constexpr std::array<uint8_t, 4> kMr{0, 255, 0, 255};
+    static constexpr std::array<uint8_t, 4> kMr{0, 255, 255, 255};
     if (!m_textureUploader.uploadRGBA8(staticRecorder, kMr.data(),
                                        VK_FORMAT_R8G8B8A8_UNORM, 1, 1, tex)) {
       LOGE("Default MetallicRoughness texture creation failed");

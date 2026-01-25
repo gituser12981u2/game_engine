@@ -106,6 +106,8 @@ int main() {
 
     MaterialSystem::MaterialDescription desc{};
     desc.baseColorTexture = albedo;
+    desc.metallicFactor = 0.0F;
+    desc.roughnessFactor = 0.5F;
 
     material = app.renderer().createMaterial(desc);
   }
@@ -131,7 +133,7 @@ int main() {
     app.renderer().addDirectionalLight(sun);
 
     PointLightGPU p{};
-    p.positionWS = glm::vec3(-3.5, 0, 0);
+    p.positionWS = glm::vec3(-3.1, 0, 0);
     p.radius = 6.0F;
     p.colorLinear = glm::vec3(1.0F, 0.8F, 0.6F);
     p.lumens = 800.0F;

@@ -4,6 +4,91 @@
 
 #include "common.glsl"
 
+const float PI = 3.14159265358979323846;
+
+float saturate(float x) { return clamp(x, 0.0, 1.0); }
+
+vec3 radianceDirectional(DirectionalLight Ld) {
+  vec3 color = Ld.colorLinear_pad.rgb;
+  float lux = Ld.directionWS_illuminanceLux.w;
+  return color * lux;
+}
+
+vec3 directionToDirectionalLight(DirectionalLight Ld) {
+  return normalize(-Ld.directionWS_illuminanceLux.xyz);
+}
+
+bool getPointLight(vec3 P, PointLight Lp, out vec3 L, out vec3 radiance) {
+  vec3 toL = Lp.positionWS - P;
+  float d2 = dot(toL, toL);
+  float d = sqrt(d2);
+  if (d <= 1e-4) return false;
+
+  // Radius cutoff 
+  float att = 1.0 - saturate(d / max(Lp.radius, 1e-4));
+  att = att * att;
+
+  L = toL / d;
+
+  float inv4pi = 0.07957747155; // 1/(4*pi)
+  float E = (Lp.lumens * inv4pi) / max(d2, 1e-4);
+
+  radiance = (Lp.colorLinear * E) * att;
+  return true;
+}
+
+float D_GGX(float NoH, float a2) {
+  float denom = NoH * NoH * (a2 - 1.0) + 1.0;
+  return a2 / max(PI * denom * denom, 1e-8);
+}
+
+float G_SchlickGGX(float NoX, float k) {
+  return NoX / max(NoX * (1.0 - k) + k, 1e-8);
+}
+
+float G_Smith(float NoV, float NoL, float k) {
+  return G_SchlickGGX(NoV, k) * G_SchlickGGX(NoL, k);
+}
+
+vec3 F_Schlick(vec3 F0, float VoH) {
+  float f = pow(1.0 - VoH, 5.0);
+  return F0 + (1.0 - F0) * f;
+}
+
+vec3 evalDirectBRDF(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness) {
+  float NoV = saturate(dot(N, V));
+  float NoL = saturate(dot(N, L));
+  if (NoV <= 1e-4 || NoL <= 1e-4) return vec3(0.0);
+
+  vec3 H = normalize(V + L);
+
+  float NoH = saturate(dot(N, H));
+  float VoH = saturate(dot(V, H));
+  
+  // Perceptual roughness -> alpha
+  float r = clamp(roughness, 0.04, 1.0);
+  float a = r * r;
+  float a2 = a * a;
+
+  // Fresnel at normal incidence
+  vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+  vec3 F = F_Schlick(F0, VoH);
+  float D = D_GGX(NoH, a2);
+
+  float k = (r + 1.0);
+  k = (k * k) * 0.125; // /8 
+  float G = G_Smith(NoV, NoL, k);
+
+  vec3 spec = (D * G) * F / max(4.0 * NoV * NoL, 1e-4);
+
+  // Diffuse with lambert, energy compensated
+  vec3 kd = (vec3(1.0) - F) * (1.0 - metallic);
+  vec3 diff = kd * albedo * (1.0 / PI);
+
+  return (diff + spec) * radiance * NoL;
+}
+
 layout(set = 1, binding = 0) uniform sampler2D g_tex[];
 
 layout(location = 0) in vec3 vColor;
@@ -37,41 +122,6 @@ vec4 sampleTex(uint idx, vec2 uv, vec4 fallback) {
   return texture(g_tex[nonuniformEXT(idx)], uv);
 }
 
-float saturate(float x) { return clamp(x, 0.0, 1.0); }
-
-// Lambert for directional lights
-vec3 evalLambertDir(vec3 N, DirectionalLight Ld, vec3 albedoLinear) {
-  vec3 L = normalize(-Ld.directionWS_illuminanceLux.xyz);
-  float lux = Ld.directionWS_illuminanceLux.w;
-  vec3 color = Ld.colorLinear_pad.rgb;
-  float NoL = saturate(dot(N, L));
-  vec3 E = color * lux;
-  return albedoLinear * (E * NoL);
-}
-
-vec3 evalLambertPoint(vec3 P, vec3 N, PointLight Lp, vec3 albedoLinear) {
-  vec3 toL = Lp.positionWS - P;
-  float d2 = dot(toL, toL);
-  float d = sqrt(d2);
-  if (d <= 1e-4) {
-    return vec3(0.0);
-  }
-
-  // Radius cutoff
-  float att = 1.0 - saturate(d / max(Lp.radius, 1e-4));
-  att = att * att;
-
-  vec3 L = toL / d;
-  float NoL = saturate(dot(N, L));
-
-  // point light luminous flux (lumens) spread over sphere: E ~ lumens / (4*pi*r^2)
-  float inv4pi = 0.0795774715; // 1/(4*pi)
-  float E = (Lp.lumens * inv4pi) / max(d2, 1e-4);
-
-  vec3 radiance = Lp.colorLinear * E;
-  return albedoLinear * (radiance * NoL) * att;
-}
-
 void main() {
   uint f = push.frameIndex;
   DebugUBO dbg = g_scene[nonuniformEXT(f)].scene.dbg;
@@ -84,7 +134,7 @@ void main() {
 
   // MetallicRoughness 
   vec4 mrTex = sampleTex(m.tex0.z, v_uv, vec4(0.0, 1.0, 0.0, 1.0));
-  float roughness = clamp(m.mrAoAlpha.y * mrTex.g, 0.04, 1.0);
+  float roughness = clamp(m.mrAoAlpha.y * mrTex.g, 0.001, 1.0);
   float metallic = clamp(m.mrAoAlpha.x * mrTex.b, 0.0, 1.0);
 
   // Occlusion (linear) 
@@ -105,33 +155,51 @@ void main() {
   }
 
   vec3 N = normalize(v_worldN);
+
+  // Directional: from point -> camera
+  SceneUBO s = g_scene[nonuniformEXT(f)].scene;
+  vec3 camPos = s.camera.cameraPosWS_pad.xyz;
+  vec3 V = normalize(camPos - v_worldPos);
+
   vec3 albedo = base.rgb;
+
   vec3 lit = vec3(0.0);
 
-  // Directional
-  SceneUBO s = g_scene[nonuniformEXT(f)].scene;
+  // Directional lights
   uint dlCount = min(s.dirLightCount, kMaxDirLights);
   for (uint i = 0u; i < dlCount; ++i) {
-    lit += evalLambertDir(N, s.dirLights[i], albedo);
+    DirectionalLight Ld = s.dirLights[i];
+    vec3 L = directionToDirectionalLight(Ld);
+    vec3 radiance = radianceDirectional(Ld);
+    lit += evalDirectBRDF(N, V, L, radiance, albedo, metallic, roughness);
   }
 
   // Point lights
   uint plCount = s.pointLightCount;
   for (uint i = 0u; i < plCount; ++i) {
     PointLight Lp = g_pointLights[nonuniformEXT(f)].lights[i];
-    lit += evalLambertPoint(v_worldPos, N, Lp, albedo);
+    vec3 L;
+    vec3 radiance;
+    if (getPointLight(v_worldPos, Lp, L, radiance)) {
+      lit += evalDirectBRDF(N, V, L, radiance, albedo, metallic, roughness);
+    }
   }
 
   // TODO: remove when IBL is made
   vec3 up = vec3(0.0, 0.0, 1.0);
+
   float hemi = 0.5 + 0.5 * dot(N, up);
   vec3 sky = vec3(0.04);
   vec3 ground = vec3(0.01);
-  vec3 ambient = albedo * mix(ground, sky, hemi);
+
+  vec3 F0 = mix(vec3(0.04), albedo, metallic);
+  vec3 F = F_Schlick(F0, saturate(dot(N, V)));
+  vec3 kd = (vec3(1.0) - F) * (1.0 - metallic);
+
+  vec3 ambient = kd * albedo * mix(ground, sky, hemi);
   lit += ambient;
 
   lit *= ao;
-  vec3 colotOut = lit + emissive;
 
   if (dbg.view == 1u) { outColor = vec4(base.rgb, 1.0); return; }
   if (dbg.view == 2u) { outColor = vec4(vec3(metallic), 1.0); return; }
@@ -144,10 +212,9 @@ void main() {
   if (dbg.view == 9u) { outColor = vec4(fract(v_worldPos * 0.1), 1.0); return; }
   if (dbg.view == 10u) { outColor = vec4(lit, 1.0); return; }
 
-
   // TODO: remove after HDR + tonemapping
-  float exposure = 1.0 / 10000.0;
-  vec3 colorOut = 1.0 - exp(-lit * exposure);
+  float exposure = 1.0 / 1.0;
+  vec3 colorOut = 1.0 - exp(-(lit + emissive) * exposure);
 
-  outColor = vec4(colotOut, alpha);
+  outColor = vec4(colorOut, alpha);
 }
