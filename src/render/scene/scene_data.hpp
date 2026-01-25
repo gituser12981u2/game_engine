@@ -9,10 +9,15 @@
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "engine/camera/camera_ubo.hpp"
 #include "render/scene/debug_ubo.hpp"
+#include "render/scene/lights_gpu.hpp"
+#include "render/scene/scene_ubo.hpp"
 
+#include <array>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <span>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 class SceneData {
@@ -29,7 +34,7 @@ public:
   bool init(VkBackendCtx &ctx, uint32_t framesInFlight,
             const VkShaderInterface &interface,
             uint32_t requestedMaxInstancesPerFrame,
-            uint32_t requestedMaxMaterials);
+            uint32_t requestedMaxMaterials, uint32_t requestedMaxPointLights);
   void shutdown() noexcept;
 
   bool update(uint32_t frameIndex, const CameraUBO &camera);
@@ -39,6 +44,10 @@ public:
                                        uint32_t frameIndex,
                                        uint32_t &cursorInstances,
                                        std::span<const glm::mat4> models);
+
+  bool uploadPointLights(VkUploadContext::Recorder recorder,
+                         uint32_t frameIndex,
+                         std::span<const PointLightGPU> lights);
 
   [[nodiscard]] VkBuffer materialBuffer() const noexcept {
     return m_materialBuf.handle();
@@ -60,7 +69,28 @@ public:
     return m_maxInstancesPerFrame;
   }
 
+  [[nodiscard]] VkBuffer pointLightBuffer() const noexcept {
+    return m_pointLightBuf.handle();
+  }
+  [[nodiscard]] VkDeviceSize pointLightFrameStride() const noexcept {
+    return m_pointLightFrameStride;
+  }
+  [[nodiscard]] uint32_t maxPointLightsPerFrame() const noexcept {
+    return m_maxPointLightsPerFrame;
+  }
+
   void setDebug(const DebugUBO &debug) { m_debug = debug; }
+
+  void clearLights();
+  void addDirectionalLight(const DirectionalLight &light);
+  void addDirectionalLight(glm::vec3 directionWS, glm::vec3 colorLinear,
+                           float illuminanceLux);
+
+  void addPointLight(const PointLightGPU &light);
+  void addPointLight(glm::vec3 posWS, glm::vec3 colorLinear, float umens,
+                     float radius);
+
+  bool commitLights(VkUploadContext::Recorder recorder, uint32_t frameIndex);
 
 private:
   bool initSceneBuffers(VmaAllocator allocator, uint32_t framesInFlight);
@@ -69,6 +99,8 @@ private:
                           uint32_t requestedMaxInstancesPerFrame);
   bool initMaterialBuffer(VmaAllocator allocator,
                           uint32_t requestedMaxMaterials);
+  bool initPointLightBuffer(VmaAllocator allocator, uint32_t framesInFlight,
+                            uint32_t requestedMaxPointLights);
   bool initDescriptorSets(VkDevice device, const VkShaderInterface &interface);
 
   VkPerFrameUniformBuffers m_sceneBufs;
@@ -82,8 +114,18 @@ private:
   VkDeviceSize m_instanceFrameStride = 0;
   uint32_t m_maxInstancesPerFrame = 0;
 
+  VkBufferObj m_pointLightBuf; // device-local storage buffer (per-frame slices)
+  VkDeviceSize m_pointLightFrameStride = 0;
+  uint32_t m_maxPointLightsPerFrame = 0;
+
   DebugUBO m_debug = {};
 
   VkSceneSets m_sets; // set 0 bindings
   bool m_initiailized = false;
+
+  std::array<DirectionalLight, kMaxDirLights> m_dirLights{};
+  uint32_t m_dirLightCountThisFrame = 0;
+
+  std::vector<PointLightGPU> m_pointLightsScratch;
+  uint32_t m_pointLightCountThisFrame = 0;
 };

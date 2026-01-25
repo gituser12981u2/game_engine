@@ -32,7 +32,8 @@ public:
   bool init(VkDevice device, VkDescriptorSetLayout layout,
             const VkPerFrameUniformBuffers &sceneBufs, VkBuffer instanceBuffer,
             VkDeviceSize instanceFrameStrideBytes, VkBuffer materialBuffer,
-            VkDeviceSize materialTableBytes);
+            VkDeviceSize materialTableBytes, VkBuffer lightBuffer,
+            VkDeviceSize lightFrameStrideBytes);
   void shutdown() noexcept;
 
   void bind(VkCommandBuffer cmd, VkPipelineLayout pipelineLayout,

@@ -29,7 +29,7 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   (void)messageTypes;
   (void)pUserData;
 
-  LOGD("Validation layer: {}", pCallbackData->pMessage);
+  LOGE("Validation layer: {}", pCallbackData->pMessage);
   return VK_FALSE;
 }
 

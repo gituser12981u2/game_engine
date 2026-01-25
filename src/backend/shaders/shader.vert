@@ -1,48 +1,28 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "common.glsl"
+
 layout(location = 0) in vec3 inPos;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec2 inUV;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec3 inColor;
+layout(location = 3) in vec2 inUV;
 
 layout(location = 0) out vec3 vColor;
 layout(location = 1) out vec2 v_uv;
 layout(location = 2) flat out uint v_matId;
+layout(location = 3) out vec3 v_worldPos;
+layout(location = 4) out vec3 v_worldN;
 
-struct DebugUBO {
-  uint view;
-  uint flags;
-  float value0;
-  float value1;
-};
-
-layout(set = 0, binding = 0, std140) uniform SceneUBO {
-  mat4 view;
-  mat4 proj;
-  DebugUBO dbg;
+layout(set = 0, binding = 0, std140) uniform SceneSet {
+  SceneUBO scene;
 } g_scene[];
 
 // instance data
 layout(set = 0, binding = 1, std430) readonly buffer InstanceSSBO {
   mat4 model[];
 } g_inst[];
-
-// Material table
-// 80 bytes per material
-struct Material {
-  vec4 baseColorFactor; // rgba
-  vec4 emissiveFactor;  // rgb + pad
-
-  // x=metallic, y=roughness, z=aoStrength, w=alphaCutoff
-  vec4 mrAoAlpha;
-
-  // Texture indices
-  uvec4 tex0; // x=baseColor, y=normal, z=metalRough, w=occlusion
-  uvec4 tex1; // x=emissive, y=reserved, z=reserved, w=reserved
-
-  // flags: bits for alphaMode, doubleSided, etc.
-  uvec4 flags;
-};
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialSSBO {
   Material materials[];
@@ -56,14 +36,19 @@ layout(push_constant) uniform Push {
 
 void main() {
   uint f = push.frameIndex;
-
   uint idx = push.baseInstance + gl_InstanceIndex;
+
   mat4 M = g_inst[nonuniformEXT(f)].model[idx];
+  SceneUBO s = g_scene[nonuniformEXT(f)].scene;
 
-  mat4 V = g_scene[nonuniformEXT(f)].view;
-  mat4 P = g_scene[nonuniformEXT(f)].proj;
+  vec4 wp = M * vec4(inPos, 1.0);
+  v_worldPos = wp.xyz;
 
-  gl_Position = P * V * M * vec4(inPos, 1.0);
+  mat3 Nmat = transpose(inverse(mat3(M)));
+  v_worldN = normalize(Nmat * inNormal);
+
+  gl_Position = s.camera.proj * s.camera.view * wp;
+
   v_uv = inUV;
   vColor = inColor;
   v_matId = push.materialId;

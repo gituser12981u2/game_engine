@@ -1,4 +1,5 @@
 #include "gltf_cpu_loader.hpp"
+#include "engine/logging/log.hpp"
 
 #include <cgltf.h>
 #include <cstddef>
@@ -8,9 +9,11 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/quaternion_float.hpp>
+#include <glm/ext/quaternion_geometric.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
@@ -208,6 +211,7 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
                                    GltfSceneCpu &out,
                                    PrimitiveMap &primitiveMap) {
   const cgltf_accessor *posAcc = nullptr;
+  const cgltf_accessor *nrmAcc = nullptr;
   const cgltf_accessor *uvAcc = nullptr;
   const cgltf_accessor *colAcc = nullptr;
 
@@ -217,6 +221,10 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
 
     if (a.type == cgltf_attribute_type_position) {
       posAcc = a.data;
+    }
+
+    if (a.type == cgltf_attribute_type_normal) {
+      nrmAcc = a.data;
     }
 
     if (a.type == cgltf_attribute_type_texcoord && a.index == 0) {
@@ -240,9 +248,18 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
 
   // Read arrays
   std::vector<float> posF;
+  std::vector<float> nrmF;
   std::vector<float> uvF;
   std::vector<float> colF;
   readVecN(posAcc, 3, posF);
+
+  if (nrmAcc != nullptr) {
+    if (nrmAcc->type != cgltf_type_vec3) {
+      LOGE("NORMAL not vec3; ignoring");
+    } else {
+      readVecN(nrmAcc, 3, nrmF);
+    }
+  }
 
   if (uvAcc != nullptr) {
     if (uvAcc->type != cgltf_type_vec2) {
@@ -292,6 +309,13 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
       }
     }
 
+    // Default normals
+    vert.normal = {0.0F, 0.0F, 1.0F};
+    if (!nrmF.empty()) {
+      vert.normal = {nrmF[(vertexIdx * 3) + 0], nrmF[(vertexIdx * 3) + 1],
+                     nrmF[(vertexIdx * 3) + 2]};
+    }
+
     // Default UV
     vert.uv = {0.0F, 0.0F};
     if (!uvF.empty()) {
@@ -314,6 +338,45 @@ static void loadTrianglePrimitives(const cgltf_primitive *primitive,
       meshData.indices[static_cast<size_t>(indexIndex)] =
           static_cast<std::uint32_t>(
               cgltf_accessor_read_index(primitive->indices, indexIndex));
+    }
+  }
+
+  // Generate normals if missing
+  if (nrmF.empty()) {
+    std::vector<glm::vec3> acc(meshData.vertices.size(), glm::vec3(0.0F));
+
+    auto addTri = [&](uint32_t i0, uint32_t i1, uint32_t i2) {
+      const glm::vec3 p0 = meshData.vertices[i0].pos;
+      const glm::vec3 p1 = meshData.vertices[i1].pos;
+      const glm::vec3 p2 = meshData.vertices[i2].pos;
+      glm::vec3 n = glm::cross(p1 - p0, p2 - p0);
+      acc[i0] += n;
+      acc[i1] += n;
+      acc[i2] += n;
+    };
+
+    if (!meshData.indices.empty()) {
+      for (size_t i = 0; i + 2 < meshData.indices.size(); i += 3) {
+        addTri(meshData.indices[i], meshData.indices[i + 1],
+               meshData.indices[i + 2]);
+      }
+    } else {
+      // non indexed triangles assumed to be in order
+      for (size_t i = 0; i + 2 < meshData.vertices.size(); i += 3) {
+        addTri((uint32_t)i, (uint32_t)i + 1, (uint32_t)i + 2);
+      }
+    }
+
+    for (size_t i = 0; i < meshData.vertices.size(); ++i) {
+      glm::vec3 n = acc[i];
+      float len2 = glm::dot(n, n);
+      if (len2 > 1e-20F) {
+        n = glm::normalize(n);
+      } else {
+        n = {0.0F, 0.0F, 1.0F};
+      }
+
+      meshData.vertices[i].normal = n;
     }
   }
 

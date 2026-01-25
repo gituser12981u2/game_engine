@@ -7,6 +7,7 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <vulkan/vulkan_core.h>
@@ -46,6 +47,7 @@ CameraUBO Camera::makeUbo(VkExtent2D extent) const {
   CameraUBO ubo{};
 
   const glm::vec3 f = forward();
+  ubo.cameraPosWS_pad = glm::vec4(position, 0.0F);
   ubo.view = glm::lookAt(position, position + f, glm::vec3(0.0F, 0.0F, 1.0F));
 
   const float width = static_cast<float>(extent.width);

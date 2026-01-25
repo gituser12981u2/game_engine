@@ -33,7 +33,7 @@ bool VkShaderInterface::init(VkDevice device, uint32_t framesInFlight,
   VkDescriptorSetLayoutBinding instanceSsbo{};
   instanceSsbo.binding = 1;
   instanceSsbo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  instanceSsbo.descriptorCount = 1;
+  instanceSsbo.descriptorCount = framesInFlight;
   instanceSsbo.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
   // set=0 binding=2: material table SSBO
@@ -44,20 +44,31 @@ bool VkShaderInterface::init(VkDevice device, uint32_t framesInFlight,
   materialSsbo.stageFlags =
       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  std::array<VkDescriptorSetLayoutBinding, 3> sceneBindings{
-      sceneUbo, instanceSsbo, materialSsbo};
+  // set=0 binding=3: point lights SSBO
+  VkDescriptorSetLayoutBinding lightsSsbo{};
+  lightsSsbo.binding = 3;
+  lightsSsbo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  lightsSsbo.descriptorCount = framesInFlight;
+  lightsSsbo.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-  std::array<VkDescriptorBindingFlags, 3> sceneBindFlags{};
-  sceneBindFlags[0] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-  sceneBindFlags[1] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+  std::array<VkDescriptorSetLayoutBinding, 4> sceneBindings{
+      sceneUbo, instanceSsbo, materialSsbo, lightsSsbo};
+
+  std::array<VkDescriptorBindingFlags, 4> sceneFlags{
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+      VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+  };
 
   VkDescriptorSetLayoutBindingFlagsCreateInfo sceneFlagsInfo{};
   sceneFlagsInfo.sType =
       VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-  sceneFlagsInfo.bindingCount = (uint32_t)sceneBindFlags.size();
-  sceneFlagsInfo.pBindingFlags = sceneBindFlags.data();
+  sceneFlagsInfo.bindingCount = (uint32_t)sceneFlags.size();
+  sceneFlagsInfo.pBindingFlags = sceneFlags.data();
 
   VkDescriptorSetLayoutCreateInfo sceneInfo{};
   sceneInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;

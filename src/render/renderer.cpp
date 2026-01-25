@@ -48,6 +48,8 @@ static constexpr VkDeviceSize kUploadFrameBudget = 2ULL * kMiB;
 static constexpr uint32_t kRequestedMaxInstancesPerFrame = 16U * 1024U;
 static constexpr uint32_t kRequestedMaxMaterials = 1024U;
 
+static constexpr uint32_t kRequestedMaxLightsPerFrame = 1024U;
+
 static constexpr uint32_t kMaxTextures = 8192;
 
 bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
@@ -129,7 +131,8 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
   }
 
   if (!m_scene.init(*m_ctx, m_framesInFlight, m_interface,
-                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials)) {
+                    kRequestedMaxInstancesPerFrame, kRequestedMaxMaterials,
+                    kRequestedMaxLightsPerFrame)) {
     LOGE("Failed to initialize scene data");
     shutdown();
     return false;
@@ -478,11 +481,17 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   {
     PROFILE_CPU_SCOPE(CpuProfiler::Stat::UpdatePerFrameUBO);
+
+    VkUploadContext::Recorder recorder = m_uploads.frameRecorder(0);
+    if (recorder) {
+      (void)m_scene.commitLights(recorder, frameIndex);
+    }
+
     (void)m_scene.update(frameIndex, m_cameraUbo);
 
 #ifndef NDEBUG
     DebugUBO dbg{};
-    dbg.view = 1;
+    dbg.view = 0;
     m_scene.setDebug(dbg);
 #endif
   }

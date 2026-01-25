@@ -8,6 +8,8 @@
 #include "render/renderer.hpp"
 #include "render/resources/material_system.hpp"
 #include "render/resources/mesh_store.hpp"
+#include "render/scene/lights_gpu.hpp"
+#include "render/scene/scene_ubo.hpp"
 
 #include <GLFW/glfw3.h>
 #include <cmath>
@@ -15,6 +17,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/geometric.hpp>
 #include <iostream>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -120,6 +123,19 @@ int main() {
 
     const float t = (float)glfwGetTime();
     draw.clear();
+
+    DirectionalLight sun{};
+    sun.directionWS_illuminanceLux =
+        glm::normalize(glm::vec4(0.3F, 0.2F, -1.0F, 30'000.0F));
+    sun.colorLinear_pad = glm::vec4(1.0F, 1.0F, 1.0F, 0.0F);
+    app.renderer().addDirectionalLight(sun);
+
+    PointLightGPU p{};
+    p.positionWS = glm::vec3(-3.5, 0, 0);
+    p.radius = 6.0F;
+    p.colorLinear = glm::vec3(1.0F, 0.8F, 0.6F);
+    p.lumens = 800.0F;
+    app.renderer().addPointLight(p);
 
     DrawItem cubeA{};
     cubeA.mesh = cube;

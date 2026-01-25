@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <iostream>
 #include <numbers>
 #include <utility>
@@ -18,19 +19,23 @@ MeshData triangle(float size) {
   builder.reserve(3, 0);
 
   const float h = size * 0.5F;
+  const glm::vec3 n{0.0F, 0.0F, 1.0F};
 
   builder.vertices.push_back(engine::Vertex{
       .pos = {0.0F, -h, 0.0F},
+      .normal = n,
       .uv = {0.5F, 0.0F},
   });
 
   builder.vertices.push_back(engine::Vertex{
       .pos = {+h, +h, 0.0F},
+      .normal = n,
       .uv = {1.0F, 1.0F},
   });
 
   builder.vertices.push_back(engine::Vertex{
       .pos = {-h, +h, 0.0F},
+      .normal = n,
       .uv = {0.0F, 1.0F},
   });
 
@@ -87,6 +92,7 @@ MeshData circle(uint32_t segments, float radius) {
   engine::MeshBuilder builder;
 
   segments = std::max(segments, 3U);
+  const glm::vec3 n{0.0F, 0.0F, 1.0F};
 
   builder.reserve(static_cast<size_t>(segments) + 2U,
                   static_cast<size_t>(segments) * 3U);
@@ -94,6 +100,7 @@ MeshData circle(uint32_t segments, float radius) {
   // center
   builder.vertices.push_back(engine::Vertex{
       .pos = glm::vec3{0.0F, 0.0F, 0.0F},
+      .normal = n,
       .uv = {0.5F, 0.5F},
   });
 
@@ -111,6 +118,7 @@ MeshData circle(uint32_t segments, float radius) {
 
     builder.vertices.push_back(engine::Vertex{
         .pos = glm::vec3{x, y, 0.0F},
+        .normal = n,
         .uv = uv,
     });
   }
@@ -127,37 +135,47 @@ MeshData circle(uint32_t segments, float radius) {
 
 MeshData poincareDisk() {
   MeshData m;
+  const glm::vec3 n{0.0F, 0.0F, 1.0F};
+
   m.vertices = {
       // Bottom arc (curving inward)
       engine::Vertex{
           .pos = glm::vec3{-0.6F, -0.4F, 0.0F},
+          .normal = n,
       },
       engine::Vertex{
           .pos = glm::vec3{0.6F, -0.4F, 0.0F},
+          .normal = n,
       },
 
       // Right arc
       engine::Vertex{
           .pos = glm::vec3{0.8F, -0.1F, 0.0F},
+          .normal = n,
       },
       engine::Vertex{
           .pos = glm::vec3{0.8F, 0.1F, 0.0F},
+          .normal = n,
       },
 
       // Top arc
       engine::Vertex{
           .pos = glm::vec3{0.6F, 0.4F, 0.0F},
+          .normal = n,
       },
       engine::Vertex{
           .pos = glm::vec3{-0.6F, 0.4F, 0.0F},
+          .normal = n,
       },
 
       // Left arc
       engine::Vertex{
           .pos = glm::vec3{-0.8F, 0.1F, 0.0F},
+          .normal = n,
       },
       engine::Vertex{
           .pos = glm::vec3{-0.8F, -0.1F, 0.0F},
+          .normal = n,
       },
   };
 

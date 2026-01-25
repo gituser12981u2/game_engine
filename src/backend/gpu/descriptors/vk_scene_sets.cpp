@@ -14,8 +14,9 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
                        const VkPerFrameUniformBuffers &sceneBufs,
                        VkBuffer instanceBuffer,
                        VkDeviceSize instanceFrameStrideBytes,
-                       VkBuffer materialBuffer,
-                       VkDeviceSize materialTableBytes) {
+                       VkBuffer materialBuffer, VkDeviceSize materialTableBytes,
+                       VkBuffer lightBuffer,
+                       VkDeviceSize lightFrameStrideBytes) {
   if (device == VK_NULL_HANDLE || layout == VK_NULL_HANDLE ||
       !sceneBufs.valid() || instanceBuffer == VK_NULL_HANDLE ||
       instanceFrameStrideBytes == 0 || materialBuffer == VK_NULL_HANDLE ||
@@ -36,14 +37,15 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   m_framesInFlight = framesInFlight;
 
   // UBO descriptors: scene[frames] = frames
-  // SSBO descriptors: instance[frames] + material[1] = frames + 1
+  // SSBO descriptors: instance[frames] + material[1] + lights[1] = 2 *
+  // framesInFlight + 2
   std::array<VkDescriptorPoolSize, 2> poolSizes{};
 
   poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
   poolSizes[0].descriptorCount = framesInFlight;
 
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  poolSizes[1].descriptorCount = framesInFlight + 1;
+  poolSizes[1].descriptorCount = 2 * framesInFlight + 1;
 
   VkDescriptorPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -74,6 +76,7 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
 
   std::vector<VkDescriptorBufferInfo> sceneInfos(framesInFlight);
   std::vector<VkDescriptorBufferInfo> instanceInfos(framesInFlight);
+  std::vector<VkDescriptorBufferInfo> lightInfos(framesInFlight);
 
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     sceneInfos[i].buffer = sceneBufs.buffer(i).handle();
@@ -83,6 +86,10 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
     instanceInfos[i].buffer = instanceBuffer;
     instanceInfos[i].offset = VkDeviceSize(i) * instanceFrameStrideBytes;
     instanceInfos[i].range = instanceFrameStrideBytes;
+
+    lightInfos[i].buffer = lightBuffer;
+    lightInfos[i].offset = VkDeviceSize(i) * lightFrameStrideBytes;
+    lightInfos[i].range = lightFrameStrideBytes;
   }
 
   // Global material table
@@ -91,7 +98,7 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   materialInfo.offset = 0;
   materialInfo.range = materialTableBytes;
 
-  std::array<VkWriteDescriptorSet, 3> writes{};
+  std::array<VkWriteDescriptorSet, 4> writes{};
 
   // binding 0: SceneUBO[]
   writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -119,6 +126,15 @@ bool VkSceneSets::init(VkDevice device, VkDescriptorSetLayout layout,
   writes[2].descriptorCount = 1;
   writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   writes[2].pBufferInfo = &materialInfo;
+
+  // binding 3: LightSSBO
+  writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[3].dstSet = m_set;
+  writes[3].dstBinding = 3;
+  writes[3].dstArrayElement = 0;
+  writes[3].descriptorCount = framesInFlight;
+  writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  writes[3].pBufferInfo = lightInfos.data();
 
   vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0,
                          nullptr);
