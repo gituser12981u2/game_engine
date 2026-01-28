@@ -4,7 +4,6 @@
 #include "backend/frame/vk_frame_manager.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
-#include "backend/profiling/logging/profiling_logger.hpp"
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include "render/rendergraph/main_pass.hpp"
@@ -85,7 +84,6 @@ public:
     shutdown();
 
     m_gpuProfiler = std::move(other.m_gpuProfiler);
-    m_profileReporter = std::move(other.m_profileReporter);
 
     m_framesInFlight = std::exchange(other.m_framesInFlight, 0U);
     m_ctx = std::exchange(other.m_ctx, nullptr);
@@ -170,7 +168,6 @@ private:
   std::vector<VkImageLayout> m_swapLayouts;
 
   VkGpuProfiler m_gpuProfiler;
-  profiling::FrameLogger m_profileReporter{};
 
   uint32_t m_framesInFlight = 0;
   VkBackendCtx *m_ctx = nullptr; // non-owning

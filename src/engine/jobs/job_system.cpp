@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>

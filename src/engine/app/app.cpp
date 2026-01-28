@@ -1,6 +1,12 @@
 #include "app.hpp"
 
+#if defined(ENABLE_TELEMETRY)
+#include "backend/profiling/telemetry/publish.hpp"
+#include <chrono>
+#endif
+
 #include "backend/profiling/telemetry/telemetry.hpp"
+
 #include "engine/jobs/job_system.hpp"
 #include "engine/logging/log.hpp"
 
@@ -13,6 +19,7 @@ bool EngineApp::init(const AppConfig &cfg) {
   shutdown();
 
 #if defined(ENABLE_TELEMETRY)
+  profiling::setPublishPeriod(std::chrono::seconds(5));
   profiling::setTlsTelemetry(&m_profTelemetry);
 #else
   profiling::setTlsTelemetry(nullptr);

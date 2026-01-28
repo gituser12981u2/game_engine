@@ -4,9 +4,14 @@
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
-#include "backend/profiling/logging/profiling_logger.hpp"
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
+
 #include "backend/profiling/telemetry/telemetry.hpp"
+
+#if defined(ENABLE_TELEMETRY)
+#include "backend/profiling/logging/console_sink.hpp"
+#include "backend/profiling/telemetry/publish.hpp"
+#endif
 
 #include "engine/geometry/transform.hpp"
 #include "engine/jobs/job_system.hpp"
@@ -433,19 +438,13 @@ bool Renderer::drawFrame(VkPresenter &presenter,
                          std::span<const DrawItem> items) {
   auto endGuard = makeScopeExit([&] {
 #if defined(ENABLE_TELEMETRY)
-    auto *c = profiling::cpuPtr();
-    auto *u = profiling::uploadPtr();
+    if (auto *t = profiling::telemetry(); t != nullptr) {
+      t->cpu.endInterval();
+      t->upload.endInterval();
 
-    if (c) {
-      c->endInterval();
-    }
-
-    if (u) {
-      u->endInterval();
-    }
-
-    if (c && u) {
-      m_profileReporter.logPerFrame(c, m_gpuProfiler, u);
+      if (profiling::publishMaybe(m_gpuProfiler.last())) {
+        profiling::logProfilerToConsole(*t);
+      }
     }
 #endif
   });
@@ -534,17 +533,13 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
                                           const std::string &vertSpvPath,
                                           const std::string &fragSpvPath) {
   LOGW("Recreating swapchain-dependent resources");
-  profiling::EventScope scope(profiling::Event::SwapchainRecreate);
 
   if (m_ctx == nullptr || m_ctx->device() == VK_NULL_HANDLE) {
     return false;
   }
 
   VkDevice device = m_ctx->device();
-  {
-    profiling::EventScope w(profiling::Event::DeviceWaitIdle);
-    vkDeviceWaitIdle(device);
-  }
+  vkDeviceWaitIdle(device);
 
   if (!presenter.recreateSwapchain()) {
     LOGE("Swapchain recreation failed");

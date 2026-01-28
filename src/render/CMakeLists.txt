@@ -37,6 +37,8 @@ target_link_libraries(quark_render
         quark::engine::jobs
     PRIVATE
         quark::engine::geometry
+        quark::backend::profiling::logging 
+        quark::backend::profiling::telemetry
 )
 
 add_library(quark::render ALIAS quark_render)

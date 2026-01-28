@@ -1,5 +1,5 @@
 add_library(quark_backend_profiling_logging STATIC 
-    profiling_logger.cpp
+    console_sink.cpp
 )
 
 target_include_directories(quark_backend_profiling_logging

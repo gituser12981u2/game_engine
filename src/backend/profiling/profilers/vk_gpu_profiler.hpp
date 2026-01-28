@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "backend/profiling/profilers/gpu_frame_stats.hpp"
 
 #include <cstdint>
 #include <utility>
@@ -14,13 +15,6 @@ public:
     MainPassEnd,
     FrameEnd,
     Count
-  };
-
-  struct GpuFrameStats {
-    bool valid = false;
-    double frameMs = 0.0;
-    double mainPassMs = 0.0;
-    double idleGapMs = 0.0;
   };
 
   VkGpuProfiler() = default;
@@ -59,8 +53,10 @@ public:
 
   void onFrameSubmitted() noexcept { ++m_submittedFrames; }
 
-  [[nodiscard]] GpuFrameStats tryCollect(uint32_t frameIndex) noexcept;
-  [[nodiscard]] const GpuFrameStats &last() const noexcept { return m_last; }
+  [[nodiscard]] GpuProfiler::Frame tryCollect(uint32_t frameIndex) noexcept;
+  [[nodiscard]] const GpuProfiler::Frame &last() const noexcept {
+    return m_last;
+  }
 
 private:
   static constexpr uint32_t markersPerFrame() noexcept {
@@ -84,5 +80,5 @@ private:
   std::uint64_t m_lastFrameEndTs = 0;
   bool m_haveLastFrameEndTs = false;
 
-  GpuFrameStats m_last{};
+  GpuProfiler::Frame m_last{};
 };

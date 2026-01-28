@@ -2,11 +2,15 @@
 
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
-#include "backend/profiling/telemetry/telemetry.hpp"
+
 #include "engine/geometry/mesh_factory.hpp"
 #include "engine/jobs/job_system.hpp"
 #include "platform/window/glfw_window.hpp"
 #include "render/renderer.hpp"
+
+#if defined(ENABLE_TELEMETRY)
+#include "backend/profiling/telemetry/telemetry.hpp"
+#endif
 
 #include <cstdint>
 #include <functional>

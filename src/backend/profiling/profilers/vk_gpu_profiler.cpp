@@ -1,6 +1,7 @@
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include "backend/core/vk_backend_ctx.hpp"
+#include "backend/profiling/profilers/gpu_frame_stats.hpp"
 
 #include <array>
 #include <cstddef>
@@ -120,9 +121,8 @@ void VkGpuProfiler::markFrameEnd(VkCommandBuffer cmd,
           VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 }
 
-VkGpuProfiler::GpuFrameStats
-VkGpuProfiler::tryCollect(uint32_t frameIndex) noexcept {
-  GpuFrameStats out{};
+GpuProfiler::Frame VkGpuProfiler::tryCollect(uint32_t frameIndex) noexcept {
+  GpuProfiler::Frame out{};
 
   if (m_pool == VK_NULL_HANDLE || m_framesInFlight == 0) {
     return out;
