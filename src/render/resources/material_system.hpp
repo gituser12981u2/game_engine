@@ -12,9 +12,9 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <optional>
+#include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
-
 struct TextureHandle {
   uint32_t id = UINT32_MAX;
 

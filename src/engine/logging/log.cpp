@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace log {
+namespace logging {
 
 // Pattern: time | level | thread | logger | msg
 static constexpr const char *kPattern =
@@ -88,4 +88,4 @@ std::shared_ptr<spdlog::logger> get(std::string_view name) {
   return logger;
 }
 
-} // namespace log
+} // namespace logging

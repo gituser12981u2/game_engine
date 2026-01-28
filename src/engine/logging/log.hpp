@@ -4,16 +4,16 @@
 #include <spdlog/logger.h>
 #include <string_view>
 
-namespace log {
+namespace logging {
 
 void init();
 void shutdown();
 
 std::shared_ptr<spdlog::logger> &engine();
 std::shared_ptr<spdlog::logger> get(std::string_view name);
-} // namespace log
+} // namespace logging
 
-#define LOG_TU_LOGGER() (::log::engine())
+#define LOG_TU_LOGGER() (::logging::engine())
 
 #define LOGT(...) (LOG_TU_LOGGER())->trace(__VA_ARGS__)
 #define LOGD(...) (LOG_TU_LOGGER())->debug(__VA_ARGS__)

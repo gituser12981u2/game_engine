@@ -67,7 +67,7 @@ static void pushCubeGrid(std::vector<DrawItem> &out, MeshHandle mesh,
 }
 
 int main() {
-  log::init();
+  logging::init();
   LOGI("Engine starting...");
 
   EngineApp app;
