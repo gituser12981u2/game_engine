@@ -60,7 +60,7 @@ public:
 
 private:
   VkBackendCtx *m_ctx = nullptr; // non-owning
-  //
+
   uint32_t m_framesInFlight = 0;
   uint32_t m_threadCount = 0;
 

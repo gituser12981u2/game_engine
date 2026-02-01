@@ -7,6 +7,7 @@
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "backend/ui/ui_overlay_sink.hpp"
 
 #if defined(ENABLE_TELEMETRY)
 #include "backend/profiling/logging/console_sink.hpp"
@@ -170,6 +171,15 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
+  if (m_overlaySink != nullptr) {
+    if (!m_overlaySink->init(*m_ctx, *presenter.window(), m_framesInFlight,
+                             presenter.colorFormat())) {
+      LOGE("Overlay sink init failed");
+      shutdown();
+      return false;
+    }
+  }
+
   m_swapLayouts.assign(presenter.imageCount(), VK_IMAGE_LAYOUT_UNDEFINED);
 
   return true;
@@ -184,6 +194,10 @@ void Renderer::shutdown() noexcept {
 
   if (device != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device);
+  }
+
+  if (m_overlaySink != nullptr && m_ctx != nullptr) {
+    m_overlaySink->shutdown(m_ctx->device());
   }
 
   // Commands-dependents
@@ -332,6 +346,14 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   vkCmdEndRendering(cmd);
   m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
 
+  if (m_overlaySink != nullptr) {
+    ui::OverlayTarget tgt{};
+    tgt.colorView = scView;
+    tgt.extent = extent;
+    tgt.colorFormat = presenter.colorFormat();
+    m_overlaySink->record(cmd, tgt);
+  }
+
   util::cmdImageBarrier(
       cmd, scImg, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
@@ -469,6 +491,16 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   if (st != FrameStatus::Ok && st != FrameStatus::Suboptimal) {
     return false;
+  }
+
+  // TODO: unite into global beginFrame?
+  if (m_overlaySink != nullptr) {
+    const auto &fn = m_overlayBuildFn;
+    if (fn) {
+      m_overlaySink->beginFrame(m_overlayBuildFn);
+    } else {
+      m_overlaySink->beginFrame([] {});
+    }
   }
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();

@@ -6,6 +6,7 @@
 
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
 
+#include "backend/ui/ui_overlay_sink.hpp"
 #include "render/rendergraph/main_pass.hpp"
 #include "render/rendergraph/swapchain_targets.hpp"
 
@@ -120,6 +121,12 @@ public:
 
   void setCameraUBO(const CameraUBO &ubo) { m_cameraUbo = ubo; }
 
+  void setOverlaySink(ui::IOverlaySink *sink) noexcept { m_overlaySink = sink; }
+  using OverlayBuildFn = ui::IOverlaySink::BuildFn;
+  void setOverlayBuildFn(OverlayBuildFn fn) {
+    m_overlayBuildFn = std::move(fn);
+  }
+
   // Uploading
   bool beginUpload(uint32_t frameIndex);
   bool endUpload(bool wait);
@@ -183,6 +190,9 @@ private:
   SceneData m_scene;
 
   ResourceStore m_resources;
+
+  ui::IOverlaySink *m_overlaySink = nullptr;
+  OverlayBuildFn m_overlayBuildFn;
 
   std::string m_vertPath;
   std::string m_fragPath;

@@ -1,5 +1,3 @@
-
-
 add_library(quark_backend_shaders STATIC
   vk_shader.cpp
 )

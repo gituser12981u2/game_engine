@@ -3,6 +3,8 @@
 #include "backend/core/vk_backend_ctx.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
+#include "backend/ui/imgui/imgui_overlay_sink.hpp"
+#include "engine/editor/editor.hpp"
 #include "engine/geometry/mesh_factory.hpp"
 #include "engine/jobs/job_system.hpp"
 #include "platform/window/glfw_window.hpp"
@@ -48,6 +50,12 @@ public:
   void run(const std::function<void(float dt)> &tick);
 
   GlfwWindow &window() noexcept { return m_window; }
+
+  editor::Editor &editor() noexcept { return m_editor; }
+  [[nodiscard]] const editor::Editor &editor() const noexcept {
+    return m_editor;
+  }
+
   VkBackendCtx &ctx() noexcept { return m_ctx; }
   VkPresenter &presenter() noexcept { return m_presenter; }
   Renderer &renderer() noexcept { return m_renderer; }
@@ -67,6 +75,9 @@ private:
 #if defined(ENABLE_TELEMETRY)
   profiling::Telemetry m_profTelemetry;
 #endif
+
+  editor::Editor m_editor;
+  ui::ImGuiOverlaySink m_imguiOverlay;
 
   AppConfig m_cfg{};
   bool m_inited = false;

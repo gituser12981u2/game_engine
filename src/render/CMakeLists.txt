@@ -4,12 +4,12 @@ add_subdirectory(scene)
 add_subdirectory(upload)
 
 add_library(quark_render STATIC 
-    renderer.cpp
+  renderer.cpp
 )
 
 target_include_directories(quark_render
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/src
+  PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
 )
 
 target_link_libraries(quark_render
@@ -39,6 +39,7 @@ target_link_libraries(quark_render
         quark::engine::geometry
         quark::backend::profiling::logging 
         quark::backend::profiling::telemetry
+        quark::backend::ui
 )
 
 add_library(quark::render ALIAS quark_render)

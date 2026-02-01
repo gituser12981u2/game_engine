@@ -28,12 +28,10 @@ bool EngineApp::init(const AppConfig &cfg) {
   m_cfg = cfg;
 
   if (!m_window.init(cfg.width, cfg.height, cfg.title)) {
-    std::cerr << "[App] Failed to init window\n";
     return false;
   }
 
   if (!m_jobs.init()) {
-    std::cerr << "[App] Failed to initialize the job system\n";
     return false;
   }
 
@@ -45,7 +43,6 @@ bool EngineApp::init(const AppConfig &cfg) {
   }
 
   if (!m_ctx.init(platformExtensions, cfg.enableValidation)) {
-    std::cerr << "[App] VkBackendCtx init failed\n";
     shutdown();
     return false;
   }
@@ -54,14 +51,14 @@ bool EngineApp::init(const AppConfig &cfg) {
   uint32_t fbHeight = 0;
   m_window.framebufferSize(fbWidth, fbHeight);
   if (!m_presenter.init(m_ctx, &m_window, fbWidth, fbHeight)) {
-    std::cerr << "[App] Presenter init failed\n";
     shutdown();
     return false;
   }
+  m_renderer.setOverlaySink(&m_imguiOverlay);
+  m_renderer.setOverlayBuildFn(m_editor.buildFn());
 
   if (!m_renderer.init(m_ctx, m_presenter, cfg.framesInFlight, cfg.vertSpvPath,
                        cfg.fragSpvPath, m_jobs)) {
-    std::cerr << "[App] Renderer init failed\n";
     shutdown();
     return false;
   }
@@ -78,6 +75,10 @@ void EngineApp::shutdown() noexcept {
   }
 
   m_renderer.shutdown();
+
+  m_renderer.setOverlaySink(nullptr);
+  m_renderer.setOverlayBuildFn({});
+
   m_presenter.shutdown();
   m_ctx.shutdown();
   m_jobs.shutdown();
