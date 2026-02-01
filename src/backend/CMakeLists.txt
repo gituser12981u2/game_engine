@@ -4,6 +4,7 @@ add_subdirectory(presentation)
 add_subdirectory(graphics)
 add_subdirectory(gpu)
 add_subdirectory(shaders)
+add_subdirectory(ui)
 add_subdirectory(profiling)
 
 add_library(quark_backend INTERFACE)
@@ -14,6 +15,7 @@ target_link_libraries(quark_backend INTERFACE
   quark::backend::graphics
   quark::backend::gpu
   quark::backend::shaders
+  quark::backend::ui
   quark::backend::profiling
 )
 

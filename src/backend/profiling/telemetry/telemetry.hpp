@@ -34,6 +34,7 @@ inline Telemetry *telemetry() noexcept { return tlsTelemetry(); }
 #if defined(ENABLE_TELEMETRY)
 
 #include "backend/profiling/profilers/cpu_profiler.hpp"
+#include "backend/profiling/profilers/gpu_frame_stats.hpp"
 #include "backend/profiling/profilers/upload_profiler.hpp"
 #include <atomic>
 #include <chrono>
@@ -44,6 +45,8 @@ struct alignas(64) PublishedTelemetry {
   std::atomic<uint32_t> seq{0}; // even=stable, odd=writer in progress
   CpuProfiler::Frame cpu{};
   UploadProfiler::Frame upload{};
+  UploadProfiler::Frame uploadLifetime{};
+  GpuProfiler::Frame gpu{};
 };
 
 struct Telemetry {

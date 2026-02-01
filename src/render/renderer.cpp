@@ -4,9 +4,15 @@
 #include "backend/gpu/upload/vk_upload_context.hpp"
 #include "backend/presentation/vk_presenter.hpp"
 
-#include "backend/profiling/logging/profiling_logger.hpp"
 #include "backend/profiling/profilers/vk_gpu_profiler.hpp"
+
 #include "backend/profiling/telemetry/telemetry.hpp"
+#include "backend/ui/ui_overlay_sink.hpp"
+
+#if defined(ENABLE_TELEMETRY)
+#include "backend/profiling/logging/console_sink.hpp"
+#include "backend/profiling/telemetry/publish.hpp"
+#endif
 
 #include "engine/geometry/transform.hpp"
 #include "engine/jobs/job_system.hpp"
@@ -165,6 +171,15 @@ bool Renderer::init(VkBackendCtx &ctx, VkPresenter &presenter,
     return false;
   }
 
+  if (m_overlaySink != nullptr) {
+    if (!m_overlaySink->init(*m_ctx, *presenter.window(), m_framesInFlight,
+                             presenter.colorFormat())) {
+      LOGE("Overlay sink init failed");
+      shutdown();
+      return false;
+    }
+  }
+
   m_swapLayouts.assign(presenter.imageCount(), VK_IMAGE_LAYOUT_UNDEFINED);
 
   return true;
@@ -179,6 +194,10 @@ void Renderer::shutdown() noexcept {
 
   if (device != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(device);
+  }
+
+  if (m_overlaySink != nullptr && m_ctx != nullptr) {
+    m_overlaySink->shutdown(m_ctx->device());
   }
 
   // Commands-dependents
@@ -327,6 +346,14 @@ void Renderer::recordFrame(VkCommandBuffer cmd, VkPresenter &presenter,
   vkCmdEndRendering(cmd);
   m_gpuProfiler.markMainPassEnd(cmd, frameIndex);
 
+  if (m_overlaySink != nullptr) {
+    ui::OverlayTarget tgt{};
+    tgt.colorView = scView;
+    tgt.extent = extent;
+    tgt.colorFormat = presenter.colorFormat();
+    m_overlaySink->record(cmd, tgt);
+  }
+
   util::cmdImageBarrier(
       cmd, scImg, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
@@ -433,19 +460,13 @@ bool Renderer::drawFrame(VkPresenter &presenter,
                          std::span<const DrawItem> items) {
   auto endGuard = makeScopeExit([&] {
 #if defined(ENABLE_TELEMETRY)
-    auto *c = profiling::cpuPtr();
-    auto *u = profiling::uploadPtr();
+    if (auto *t = profiling::telemetry(); t != nullptr) {
+      t->cpu.endInterval();
+      t->upload.endInterval();
 
-    if (c) {
-      c->endInterval();
-    }
-
-    if (u) {
-      u->endInterval();
-    }
-
-    if (c && u) {
-      m_profileReporter.logPerFrame(c, m_gpuProfiler, u);
+      if (profiling::publishMaybe(m_gpuProfiler.last())) {
+        profiling::logProfilerToConsole(*t);
+      }
     }
 #endif
   });
@@ -470,6 +491,16 @@ bool Renderer::drawFrame(VkPresenter &presenter,
 
   if (st != FrameStatus::Ok && st != FrameStatus::Suboptimal) {
     return false;
+  }
+
+  // TODO: unite into global beginFrame?
+  if (m_overlaySink != nullptr) {
+    const auto &fn = m_overlayBuildFn;
+    if (fn) {
+      m_overlaySink->beginFrame(m_overlayBuildFn);
+    } else {
+      m_overlaySink->beginFrame([] {});
+    }
   }
 
   const uint32_t frameIndex = m_frames.currentFrameIndex();
@@ -534,17 +565,13 @@ bool Renderer::recreateSwapchainDependent(VkPresenter &presenter,
                                           const std::string &vertSpvPath,
                                           const std::string &fragSpvPath) {
   LOGW("Recreating swapchain-dependent resources");
-  profiling::EventScope scope(profiling::Event::SwapchainRecreate);
 
   if (m_ctx == nullptr || m_ctx->device() == VK_NULL_HANDLE) {
     return false;
   }
 
   VkDevice device = m_ctx->device();
-  {
-    profiling::EventScope w(profiling::Event::DeviceWaitIdle);
-    vkDeviceWaitIdle(device);
-  }
+  vkDeviceWaitIdle(device);
 
   if (!presenter.recreateSwapchain()) {
     LOGE("Swapchain recreation failed");

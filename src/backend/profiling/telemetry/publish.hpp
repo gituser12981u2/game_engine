@@ -10,14 +10,15 @@
 
 namespace profiling {
 
-// Time-based publish
 void setPublishPeriod(std::chrono::nanoseconds period) noexcept;
 
 // Opportunistic publish
-void publishMaybe() noexcept;
+bool publishMaybe(const GpuProfiler::Frame &gpu) noexcept;
 
 bool readPublished(const Telemetry &t, CpuProfiler::Frame &outCpu,
-                   UploadProfiler::Frame &outUpload) noexcept;
+                   UploadProfiler::Frame &outUpload,
+                   UploadProfiler::Frame &outUploadLifetime,
+                   GpuProfiler::Frame &outGpu) noexcept;
 
 } // namespace profiling
 #endif

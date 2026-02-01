@@ -123,6 +123,9 @@ public:
     return static_cast<uint32_t>(m_swapchain.swapchainImageViews().size());
   }
 
+  [[nodiscard]] GlfwWindow *window() noexcept { return m_window; }
+  [[nodiscard]] const GlfwWindow *window() const noexcept { return m_window; }
+
 private:
   VkBackendCtx *m_ctx = nullptr;  // non-owning
   GlfwWindow *m_window = nullptr; // non-owning
